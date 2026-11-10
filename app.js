@@ -14,7 +14,19 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .price-bs{display:flex;flex-direction:column;line-height:1.15}
   .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
   #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
+  .drinks{grid-column:1/-1;width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:6px 22px 8px}
+  .drinks-t{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:14px 0 4px}
+  .drink-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid rgba(0,0,0,.07)}
+  .drinks-t + .drink-row{border-top:0}
+  .drink-row .dn{flex:1;min-width:0}
+  .drink-row .dn b{display:block;font-weight:500}
+  .drink-row .dn small{font-size:12px;color:#b3261e}
+  .drink-row .dp{text-align:right;white-space:nowrap;display:flex;flex-direction:column;line-height:1.2}
+  .drink-row .dp small{font-size:12px;opacity:.6}
+  .drink-row.sold .dn b,.drink-row.sold .dp{opacity:.45}
+  @media (max-width:520px){.drinks{padding:4px 14px 6px}.drink-row{gap:10px}}
 </style>`);
+const BEBIDAS = "Bebidas";
 escucharTasa(v => {
   TASA = v;
   renderGrid(); renderCart();
@@ -58,7 +70,9 @@ function renderGrid() {
   $("#count").textContent = `${list.length} producto${list.length === 1 ? "" : "s"}`;
   $("#empty").hidden = list.length > 0;
   $("#empty").textContent = PRODUCTS.length ? "No encontramos productos con esa búsqueda." : "Pronto tendremos productos disponibles.";
-  $("#grid").innerHTML = list.map(p => `
+  const comidas = list.filter(p => p.category !== BEBIDAS);
+  const bebidas = list.filter(p => p.category === BEBIDAS);
+  $("#grid").innerHTML = comidas.map(p => `
     <article class="card${p.soldOut ? " sold" : ""}" data-id="${p.id}" tabindex="0">
       <div class="img">
         ${p.image ? `<img src="${p.image}" alt="${p.name}" loading="lazy">` : ""}
@@ -72,7 +86,16 @@ function renderGrid() {
           <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
         </div>
       </div>
-    </article>`).join("");
+    </article>`).join("") + (bebidas.length ? `
+    <section class="drinks">
+      <h3 class="drinks-t">Bebidas</h3>
+      ${bebidas.map(p => `
+      <div class="drink-row${p.soldOut ? " sold" : ""}">
+        <div class="dn"><b>${p.name}</b>${p.soldOut ? "<small>Agotado</small>" : ""}</div>
+        <div class="dp"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}</div>
+        <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
+      </div>`).join("")}
+    </section>` : "");
 }
 $("#grid").addEventListener("click", e => {
   const b = e.target.closest(".add");
