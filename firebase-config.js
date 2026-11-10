@@ -10,6 +10,15 @@ export const SETTINGS = {
   currency: "$"
 };
 
+/* Colecciones de la tienda: "Nombre visible": "nombre exacto de la colección en Firestore"
+   La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada. */
+export const COLLECTIONS = {
+  "Hamburguesas": "hamburguesas",
+  "Perros Calientes": "perros_calientes",
+  "Pequeños": "pequenos",
+  "Salchipapas": "salchipapas"
+};
+
 /* Configuración de Firebase */
 const firebaseConfig = {
   apiKey: "AIzaSyA-8fZI-cBgMBqfMsXRFw8Q30tnllTPFE8",
