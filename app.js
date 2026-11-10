@@ -87,7 +87,7 @@ $("#checkout").addEventListener("submit", e => {
   if (!items.length) return;
   const total = items.reduce((s, i) => s + i.q * i.p.price, 0);
   const msg = [
-    "*Nuevo pedido - WasaroUrbanFoodPZO*", "",
+    "*Nuevo pedido - Dondecamila*", "",
     ...items.map(i => `• ${i.q} x ${i.p.name} — ${money(i.q * i.p.price)}`), "",
     `*Total: ${money(total)}*`, "",
     `Nombre: ${f.get("name")}`, `Dirección: ${f.get("address")}`,
