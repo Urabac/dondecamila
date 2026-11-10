@@ -1,7 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
 /* Datos del negocio */
 export const SETTINGS = {
   business: "Dondecamila",
@@ -16,10 +12,13 @@ export const ORDERS = "dc_pedidos";
 /* Colecciones de la tienda: "Nombre visible": "nombre exacto de la colección en Firestore"
    La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada. */
 export const COLLECTIONS = {
-  "Hamburguesas": "hamburguesas",
   "Perros Calientes": "perros_calientes",
-  "Pequeños": "pequenos",
-  "Salchipapas": "salchipapas"
+  "Hamburguesas de Carne": "hamburguesas_carne",
+  "Hamburguesas de Pollo": "hamburguesas_pollo",
+  "Pollo a la Broaster": "pollo_broaster",
+  "Salchipapas": "salchipapas",
+  "Tequeños": "tequenos",
+  "Ración de Papas": "racion_papas"
 };
 
 /* Configuración de Firebase */
