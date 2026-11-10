@@ -1,10 +1,25 @@
 import { db, SETTINGS, COLLECTIONS, ORDERS } from "./firebase-config.js";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { escucharTasa, formatoBs, aBolivares } from "./tasa.js";
 
 const $ = s => document.querySelector(s);
 const { whatsapp, currency, business } = SETTINGS;
 const money = n => currency + Number(n).toFixed(2);
 let PRODUCTS = [], category = "Todos", term = "", cart = {};
+
+/* Tasa en bolívares: la que aplicas desde el panel. Bs. = $ × tasa */
+let TASA = 0;
+const bs = usd => TASA ? formatoBs(aBolivares(usd, TASA)) : "";
+document.head.insertAdjacentHTML("beforeend", `<style>
+  .price-bs{display:flex;flex-direction:column;line-height:1.15}
+  .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
+  #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
+</style>`);
+escucharTasa(v => {
+  TASA = v;
+  renderGrid(); renderCart();
+  if (openId && !$("#modal").hidden) $("#mPrice").innerHTML = precioModal(PRODUCTS.find(x => x.id === openId));
+});
 
 try { cart = JSON.parse(localStorage.getItem("dc-cart")) || {}; } catch (e) {}
 const save = () => { try { localStorage.setItem("dc-cart", JSON.stringify(cart)); } catch (e) {} };
@@ -53,7 +68,7 @@ function renderGrid() {
         <small>${p.category || ""}</small>
         <h4>${p.name}</h4>
         <p>${p.description || ""}</p>
-        <div class="row"><strong>${money(p.price)}</strong>
+        <div class="row"><span class="price-bs"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}</span>
           <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
         </div>
       </div>
@@ -81,11 +96,15 @@ function openModal(id) {
   $("#mCat").textContent = p.category || "";
   $("#mName").textContent = p.name;
   $("#mDesc").textContent = p.description || "Sin descripción.";
-  $("#mPrice").textContent = money(p.price);
+  $("#mPrice").innerHTML = precioModal(p);
   $("#mQty").textContent = 1;
   $("#mAdd").disabled = !!p.soldOut;
   $("#mAdd").textContent = p.soldOut ? "Agotado" : "Agregar al pedido";
   $("#modal").hidden = false; document.body.style.overflow = "hidden";
+}
+function precioModal(p) {
+  if (!p) return "";
+  return money(p.price) + (TASA ? ` <span class="bs-line">· ${bs(p.price)}</span>` : "");
 }
 const closeModal = () => { $("#modal").hidden = true; document.body.style.overflow = ""; };
 $("#mClose").onclick = closeModal;
@@ -109,10 +128,12 @@ function renderCart() {
   const total = items.reduce((s, i) => s + i.q * i.p.price, 0);
   $("#cartCount").textContent = count;
   $("#total").textContent = money(total);
+  if (!$("#totalBs")) { const s = document.createElement("small"); s.id = "totalBs"; $("#total").after(s); }
+  $("#totalBs").textContent = TASA && total ? bs(total) : "";
   $("#checkout").style.display = count ? "" : "none";
   $("#cartItems").innerHTML = count ? items.map(({ p, q }) => `
     <div class="line">
-      <div><b>${p.name}</b><small>${money(p.price)} c/u</small></div>
+      <div><b>${p.name}</b><small>${money(p.price)} c/u${TASA ? " · " + bs(p.price) : ""}</small></div>
       <div class="qty"><button data-a="-" data-id="${p.id}">−</button><span>${q}</span><button data-a="+" data-id="${p.id}">+</button></div>
     </div>`).join("") : '<p class="empty-cart">Tu pedido está vacío. Agrega algo del menú.</p>';
 }
@@ -147,6 +168,7 @@ $("#checkout").addEventListener("submit", async e => {
   const number = String(Date.now()).slice(-6);
   const order = {
     number, status: "nuevo", total, delivery: mode,
+    tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
     customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
     notes: f.get("notes") || "",
     items: items.map(i => ({ id: i.p.id, name: i.p.name, price: i.p.price, qty: i.q })),
@@ -154,8 +176,9 @@ $("#checkout").addEventListener("submit", async e => {
   };
   const msg = [
     `*Nuevo pedido #${number} - ${business}*`, "",
-    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}`), "",
-    `*Total: ${money(total)}*`, "",
+    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}${TASA ? ` (${bs(i.qty * i.price)})` : ""}`), "",
+    `*Total: ${money(total)}*`,
+    ...(TASA ? [`*Total en bolívares: ${bs(total)}*`, `Tasa: ${formatoBs(TASA)}`] : []), "",
     `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
     `Tipo: ${mode === "delivery" ? "Delivery" : "Retiro en local"}`,
     ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
