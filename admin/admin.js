@@ -149,6 +149,18 @@ const toData = file => new Promise((ok, fail) => {
 const F = () => $("#pform").elements;
 F().cat.innerHTML = Object.keys(COLLECTIONS).map(c => `<option>${esc(c)}</option>`).join("");
 
+/* Bebidas: solo nombre, precio, agotado y visible (sin descripción, etiqueta ni foto) */
+const BEBIDAS = "Bebidas";
+const esBebida = () => F().cat.value === BEBIDAS;
+function camposSegunCategoria() {
+  const b = esBebida();
+  [F().desc, F().badge, F().img].forEach(el => el.closest("label").hidden = b);
+  if (b) $("#preview").hidden = true;
+  F().n.placeholder = b ? "Ej: Pepsi-Cola 2 litros" : "";
+}
+F().cat.onchange = camposSegunCategoria;
+camposSegunCategoria();
+
 function renderProducts() {
   $("#plist").innerHTML = products.length ? products.map(p => `
     <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
@@ -160,6 +172,7 @@ function renderProducts() {
 function resetForm() {
   $("#pform").reset(); F().pid.value = ""; $("#preview").hidden = true;
   $("#ptitle").textContent = "Nuevo producto"; $("#cancelEdit").hidden = true;
+  camposSegunCategoria();
 }
 $("#cancelEdit").onclick = resetForm;
 F().img.onchange = e => {
@@ -174,7 +187,8 @@ $("#pform").onsubmit = async e => {
     description: f.desc.value.trim(), badge: f.badge.value.trim(), soldOut: f.sold.checked, active: f.act.checked
   };
   try {
-    if (f.img.files[0]) data.image = await toData(f.img.files[0]);
+    if (f.cat.value === BEBIDAS) { data.description = ""; data.badge = ""; data.image = ""; }
+    else if (f.img.files[0]) data.image = await toData(f.img.files[0]);
     const col = COLLECTIONS[f.cat.value];
     if (id) {
       const old = products.find(x => x.id === id);
@@ -196,7 +210,9 @@ $("#plist").addEventListener("click", e => {
   if (b.dataset.a === "edit") {
     const f = F(); f.pid.value = p.id; f.n.value = p.name; f.cat.value = p.category; f.price.value = p.price;
     f.desc.value = p.description || ""; f.badge.value = p.badge || ""; f.sold.checked = !!p.soldOut; f.act.checked = p.active !== false;
+    $("#preview").hidden = true;
     if (p.image) { $("#preview").src = p.image; $("#preview").hidden = false; }
+    camposSegunCategoria();
     $("#ptitle").textContent = "Editando: " + p.name; $("#cancelEdit").hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
