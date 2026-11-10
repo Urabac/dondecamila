@@ -14,7 +14,9 @@ export const SETTINGS = {
 export const ORDERS = "dc_pedidos";
 
 /* Colecciones de la tienda: "Nombre visible": "nombre exacto de la colección en Firestore"
-   La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada. */
+   La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada.
+   "Bebidas" debe llamarse exactamente así: el panel y la tienda la tratan distinto
+   (solo nombre y precio, y en la tienda se muestran en lista compacta). */
 export const COLLECTIONS = {
   "Perros Calientes": "perros_calientes",
   "Hamburguesas de Carne": "hamburguesas_carne",
@@ -22,7 +24,8 @@ export const COLLECTIONS = {
   "Pollo a la Broaster": "pollo_broaster",
   "Salchipapas": "salchipapas",
   "Tequeños": "tequenos",
-  "Ración de Papas": "racion_papas"
+  "Ración de Papas": "racion_papas",
+  "Bebidas": "bebidas"
 };
 
 /* Configuración de Firebase */
