@@ -39,6 +39,9 @@ main{max-width:1100px;margin:0 auto;padding:24px}
 .card li{display:flex;justify-content:space-between;padding:6px 0}
 .f{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.f span{display:flex;gap:8px;flex-wrap:wrap}
 .f a{text-decoration:none;display:inline-block}
+#banner{background:#fde8e6;color:#8a1c14;padding:12px 16px;border-radius:8px;margin-bottom:16px;line-height:1.4}
+.st{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;background:#eee}
+.st.nuevo{background:#fde8e6;color:#b3261e}.st.confirmado{background:#fff3d1;color:#8a5a00}.st.entregado{background:#dff5e3;color:#1a7f37}
 .mute{color:#888;padding:30px;text-align:center}
 #pform{background:#fff;border:1px solid #e6e2db;border-radius:10px;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px}
 #pform .full{grid-column:1/-1}#pform label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#555}
@@ -71,14 +74,15 @@ main{max-width:1100px;margin:0 auto;padding:24px}
     <h1>Panel Dondecamila</h1>
     <nav>
       <button class="on" data-t="orders">Pedidos <b id="newCount"></b></button>
-      <button data-t="products">Productos</button>
+      <button data-t="products">Subir producto</button>
     </nav>
     <button class="btn ghost" id="logout">Salir</button>
   </header>
   <main>
+    <p id="banner" hidden></p>
     <section id="orders">
       <div class="bar"><h2>Pedidos</h2>
-        <select id="filter"><option value="">Todos</option><option>nuevo</option><option>preparando</option><option>en camino</option><option>entregado</option><option>cancelado</option></select>
+        <select id="filter"><option value="">Todos</option><option value="nuevo">Pendientes de pago</option><option value="confirmado">Confirmados</option><option value="entregado">Entregados</option><option value="cancelado">Cancelados</option></select>
       </div>
       <div id="ordersList"></div>
     </section>
