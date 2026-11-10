@@ -176,8 +176,9 @@ $("#checkout").addEventListener("submit", async e => {
   };
   const msg = [
     `*Nuevo pedido #${number} - ${business}*`, "",
-    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}`), "",
-    `*Total: ${money(total)}${TASA ? ` / ${bs(total)}` : ""}*`, "",
+    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}`),
+    `*Total: ${money(total)}*`,
+    ...(TASA ? [`*Total en bolívares: ${bs(total)}*`] : []), "",
     `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
     `Tipo: ${mode === "delivery" ? "Delivery" : "Retiro en local"}`,
     ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
