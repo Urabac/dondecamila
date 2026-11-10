@@ -1,4 +1,4 @@
-import { auth, db, SETTINGS } from "/firebase-config.js";
+import { auth, db, SETTINGS, COLLECTIONS } from "/firebase-config.js";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, onSnapshot, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -6,7 +6,7 @@ const $ = s => document.querySelector(s);
 const money = n => SETTINGS.currency + Number(n).toFixed(2);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ST = ["nuevo", "preparando", "en camino", "entregado", "cancelado"];
-let orders = [], products = [], unsubs = [], first = true;
+let orders = [], products = [], unsubs = [], first = true; const byCol = {};
 
 /* ---------- Sesión ---------- */
 $("#loginForm").onsubmit = async e => {
@@ -32,9 +32,13 @@ function start() {
     first = false;
     orders = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderOrders();
   }, e => toast("Error al leer pedidos: " + e.message)));
-  unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("createdAt", "desc")), snap => {
-    products = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderProducts();
-  }, e => toast("Error al leer productos: " + e.message)));
+  Object.entries(COLLECTIONS).forEach(([label, col]) => {
+    unsubs.push(onSnapshot(collection(db, col), snap => {
+      byCol[label] = snap.docs.map(d => ({ id: d.id, col, ...d.data(), category: label }));
+      products = Object.values(byCol).flat().sort((x, y) => (y.createdAt?.seconds || 0) - (x.createdAt?.seconds || 0));
+      renderProducts();
+    }, e => toast("Error al leer " + label + ": " + e.message)));
+  });
 }
 
 function beep() {
@@ -109,10 +113,9 @@ const toData = file => new Promise((ok, fail) => {
   r.readAsDataURL(file);
 });
 const F = () => $("#pform").elements;
+F().cat.innerHTML = Object.keys(COLLECTIONS).map(c => `<option>${esc(c)}</option>`).join("");
 
 function renderProducts() {
-  const cats = new Set(["Hamburguesas", "Perritos Calientes", "Combos", ...products.map(p => p.category)]);
-  $("#cats").innerHTML = [...cats].map(c => `<option value="${esc(c)}">`).join("");
   $("#plist").innerHTML = products.length ? products.map(p => `
     <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
       <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}<br><small>${money(p.price)}</small></div>
@@ -133,13 +136,20 @@ $("#pform").onsubmit = async e => {
   e.preventDefault();
   const f = e.target.elements, id = f.pid.value, btn = $("#saveBtn"); btn.disabled = true;
   const data = {
-    name: f.n.value.trim(), category: f.cat.value.trim(), price: parseFloat(f.price.value),
+    name: f.n.value.trim(), category: f.cat.value, price: parseFloat(f.price.value),
     description: f.desc.value.trim(), badge: f.badge.value.trim(), soldOut: f.sold.checked, active: f.act.checked
   };
   try {
     if (f.img.files[0]) data.image = await toData(f.img.files[0]);
-    if (id) await updateDoc(doc(db, "products", id), data);
-    else await addDoc(collection(db, "products"), { image: "", ...data, createdAt: serverTimestamp() });
+    const col = COLLECTIONS[f.cat.value];
+    if (id) {
+      const old = products.find(x => x.id === id);
+      if (old.col === col) await updateDoc(doc(db, col, id), data);
+      else { // cambió de categoría: se mueve a la otra colección
+        await addDoc(collection(db, col), { image: old.image || "", ...data, createdAt: old.createdAt || serverTimestamp() });
+        await deleteDoc(doc(db, old.col, id));
+      }
+    } else await addDoc(collection(db, col), { image: "", ...data, createdAt: serverTimestamp() });
     resetForm(); toast("Producto guardado");
   } catch (err) { alert("No se pudo guardar: " + err.message); }
   btn.disabled = false;
@@ -147,10 +157,10 @@ $("#pform").onsubmit = async e => {
 $("#plist").addEventListener("click", e => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
   const p = products.find(x => x.id === b.dataset.id);
-  if (b.dataset.a === "sold") updateDoc(doc(db, "products", p.id), { soldOut: !p.soldOut }).catch(x => toast(x.message));
-  if (b.dataset.a === "del" && confirm(`¿Eliminar "${p.name}"?`)) deleteDoc(doc(db, "products", p.id)).catch(x => toast(x.message));
+  if (b.dataset.a === "sold") updateDoc(doc(db, p.col, p.id), { soldOut: !p.soldOut }).catch(x => toast(x.message));
+  if (b.dataset.a === "del" && confirm(`¿Eliminar "${p.name}"?`)) deleteDoc(doc(db, p.col, p.id)).catch(x => toast(x.message));
   if (b.dataset.a === "edit") {
-    const f = F(); f.pid.value = p.id; f.n.value = p.name; f.cat.value = p.category || ""; f.price.value = p.price;
+    const f = F(); f.pid.value = p.id; f.n.value = p.name; f.cat.value = p.category; f.price.value = p.price;
     f.desc.value = p.description || ""; f.badge.value = p.badge || ""; f.sold.checked = !!p.soldOut; f.act.checked = p.active !== false;
     if (p.image) { $("#preview").src = p.image; $("#preview").hidden = false; }
     $("#ptitle").textContent = "Editando: " + p.name; $("#cancelEdit").hidden = false;
