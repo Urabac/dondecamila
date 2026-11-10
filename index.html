@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dondecamila · Fast Food en PSan félix</title>
-<meta name="description" content="Hamburguesas, perritos calientes y combos con envíos a San félix.">
+<title>Dondecamila · Fast Food en San félix</title>
+<meta name="description" content="Hamburguesas, perritos calientes y combos con envíos a todo San félix.">
 <link rel="icon" href="images/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,6 +53,7 @@
   <form class="drawer-foot" id="checkout">
     <div class="total"><span>Total</span><strong id="total">$0.00</strong></div>
     <input name="name" placeholder="Tu nombre" required>
+    <input name="phone" type="tel" placeholder="Tu teléfono" required>
     <input name="address" placeholder="Dirección de entrega" required>
     <textarea name="notes" rows="2" placeholder="Notas (sin cebolla, extra salsa…)"></textarea>
     <button class="send" type="submit">Enviar pedido por WhatsApp</button>
@@ -61,7 +62,6 @@
 </aside>
 <div class="toast" id="toast"></div>
 
-<script src="products.js"></script>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
