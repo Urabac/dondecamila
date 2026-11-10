@@ -2,6 +2,7 @@ import { auth, db, SETTINGS, COLLECTIONS, ORDERS } from "/firebase-config.js";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, onSnapshot, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+window.__adminReady = true;
 const $ = s => document.querySelector(s);
 const money = n => SETTINGS.currency + Number(n).toFixed(2);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
