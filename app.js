@@ -1,4 +1,4 @@
-import { db, SETTINGS, COLLECTIONS } from "./firebase-config.js";
+import { db, SETTINGS, COLLECTIONS, ORDERS } from "./firebase-config.js";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = s => document.querySelector(s);
@@ -89,6 +89,10 @@ $("#cartItems").addEventListener("click", e => {
   if (cart[id] <= 0) delete cart[id];
   save(); renderCart();
 });
+document.querySelectorAll('input[name="mode"]').forEach(r => r.onchange = () => {
+  const d = document.querySelector('input[name="mode"]:checked').value === "delivery";
+  $("#address").hidden = !d; $("#address").required = d;
+});
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
 
 const drawer = open => {
@@ -105,11 +109,12 @@ $("#checkout").addEventListener("submit", async e => {
   e.preventDefault();
   const items = cartItems(); if (!items.length) return;
   const f = new FormData(e.target);
+  const mode = f.get("mode") === "delivery" ? "delivery" : "retiro";
   const total = items.reduce((s, i) => s + i.q * i.p.price, 0);
   const number = String(Date.now()).slice(-6);
   const order = {
-    number, status: "nuevo", total,
-    customer: { name: f.get("name"), phone: f.get("phone"), address: f.get("address") },
+    number, status: "nuevo", total, delivery: mode,
+    customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
     notes: f.get("notes") || "",
     items: items.map(i => ({ id: i.p.id, name: i.p.name, price: i.p.price, qty: i.q })),
     createdAt: serverTimestamp()
@@ -118,16 +123,18 @@ $("#checkout").addEventListener("submit", async e => {
     `*Nuevo pedido #${number} - ${business}*`, "",
     ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}`), "",
     `*Total: ${money(total)}*`, "",
-    `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`, `Dirección: ${order.customer.address}`,
+    `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
+    `Tipo: ${mode === "delivery" ? "Delivery" : "Retiro en local"}`,
+    ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
     order.notes ? `Notas: ${order.notes}` : ""
   ].join("\n");
   const w = window.open("", "_blank");           // se abre antes del await para evitar bloqueos
   const btn = e.target.querySelector(".send"); btn.disabled = true;
-  try { await addDoc(collection(db, "orders"), order); }
+  try { await addDoc(collection(db, ORDERS), order); }
   catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
   const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
   w ? (w.location.href = url) : (location.href = url);
-  cart = {}; save(); renderCart(); drawer(false); e.target.reset(); btn.disabled = false;
+  cart = {}; save(); renderCart(); drawer(false); e.target.reset(); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
   toast(`Pedido #${number} enviado`);
 });
 
