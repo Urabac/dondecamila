@@ -44,7 +44,7 @@ function renderGrid() {
   $("#empty").hidden = list.length > 0;
   $("#empty").textContent = PRODUCTS.length ? "No encontramos productos con esa búsqueda." : "Pronto tendremos productos disponibles.";
   $("#grid").innerHTML = list.map(p => `
-    <article class="card${p.soldOut ? " sold" : ""}">
+    <article class="card${p.soldOut ? " sold" : ""}" data-id="${p.id}" tabindex="0">
       <div class="img">
         ${p.image ? `<img src="${p.image}" alt="${p.name}" loading="lazy">` : ""}
         ${p.soldOut ? '<span class="tag dark">Agotado</span>' : p.badge ? `<span class="tag">${p.badge}</span>` : ""}
@@ -60,10 +60,43 @@ function renderGrid() {
     </article>`).join("");
 }
 $("#grid").addEventListener("click", e => {
-  const b = e.target.closest(".add"); if (!b || b.disabled) return;
-  cart[b.dataset.id] = (cart[b.dataset.id] || 0) + 1;
-  save(); renderCart(); toast("Agregado al pedido");
+  const b = e.target.closest(".add");
+  if (b) {
+    if (!b.disabled) { cart[b.dataset.id] = (cart[b.dataset.id] || 0) + 1; save(); renderCart(); toast("Agregado al pedido"); }
+    return;
+  }
+  const c = e.target.closest(".card"); if (c) openModal(c.dataset.id);
 });
+$("#grid").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.classList.contains("card")) openModal(e.target.dataset.id);
+});
+
+/* Detalle del producto */
+let openId = null, mQty = 1;
+function openModal(id) {
+  const p = PRODUCTS.find(x => x.id === id); if (!p) return;
+  openId = id; mQty = 1;
+  $("#mImg").innerHTML = p.image ? `<img src="${p.image}" alt="">` : "";
+  $("#mImg img") && ($("#mImg img").alt = p.name);
+  $("#mCat").textContent = p.category || "";
+  $("#mName").textContent = p.name;
+  $("#mDesc").textContent = p.description || "Sin descripción.";
+  $("#mPrice").textContent = money(p.price);
+  $("#mQty").textContent = 1;
+  $("#mAdd").disabled = !!p.soldOut;
+  $("#mAdd").textContent = p.soldOut ? "Agotado" : "Agregar al pedido";
+  $("#modal").hidden = false; document.body.style.overflow = "hidden";
+}
+const closeModal = () => { $("#modal").hidden = true; document.body.style.overflow = ""; };
+$("#mClose").onclick = closeModal;
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+$("#mMinus").onclick = () => { mQty = Math.max(1, mQty - 1); $("#mQty").textContent = mQty; };
+$("#mPlus").onclick = () => { mQty = Math.min(20, mQty + 1); $("#mQty").textContent = mQty; };
+$("#mAdd").onclick = () => {
+  if (!openId) return;
+  cart[openId] = (cart[openId] || 0) + mQty; save(); renderCart(); closeModal(); toast("Agregado al pedido");
+};
+document.addEventListener("keydown", e => e.key === "Escape" && closeModal());
 
 /* Carrito */
 const cartItems = () => Object.entries(cart)
