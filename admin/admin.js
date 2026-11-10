@@ -5,6 +5,18 @@ import { collection, onSnapshot, query, orderBy, limit, addDoc, updateDoc, delet
 window.__adminReady = true;
 const $ = s => document.querySelector(s);
 const money = n => SETTINGS.currency + Number(n).toFixed(2);
+
+/* ---------- Tasa (BCV de referencia + tu tasa) ----------
+   Se carga aparte: si tasa.js falta o falla, el panel sigue funcionando igual. */
+let TASA = 0, formatoBs = () => "", aBolivares = () => 0;
+import("/tasa-admin.js").then(m => m.montarTasaAdmin($("#tasa-admin")))
+  .catch(e => console.warn("Barra de tasa no disponible:", e));
+import("/tasa.js").then(m => {
+  formatoBs = m.formatoBs; aBolivares = m.aBolivares;
+  m.escucharTasa(v => { TASA = v; renderProducts(); renderOrders(); });
+}).catch(e => console.warn("tasa.js no disponible:", e));
+// Bs. de un pedido: usa la tasa guardada en el pedido (la del momento en que se hizo)
+const bsPedido = (o, usd) => o.tasa ? " · " + formatoBs(aBolivares(usd, o.tasa)) : "";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const LABEL = { nuevo: "Pendiente de pago", confirmado: "Confirmado", entregado: "Entregado", cancelado: "Cancelado" };
 let orders = [], products = [], unsubs = [], first = true; const byCol = {};
@@ -75,7 +87,7 @@ function renderOrders() {
       <div class="h"><b>Pedido #${esc(o.number)}</b><span>${fdate(o)}</span><span class="st ${esc(o.status)}" style="flex:none">${LABEL[o.status] || esc(o.status)}</span></div>
       <p><b>${esc(o.customer?.name)}</b> · ${esc(o.customer?.phone)}<br><b>${kind(o)}</b>${o.delivery === "delivery" ? " · " + esc(o.customer?.address) : ""}${o.notes ? `<br><i>Notas: ${esc(o.notes)}</i>` : ""}</p>
       <ul>${(o.items || []).map(i => `<li><span>${esc(i.qty)} × ${esc(i.name)}</span><span>${money(i.qty * i.price)}</span></li>`).join("")}</ul>
-      <div class="f"><strong>Total ${money(o.total)}</strong><span>
+      <div class="f"><strong>Total ${money(o.total)}${bsPedido(o, o.total)}${o.tasa ? `<small style="font-weight:400;color:#777"> (tasa ${formatoBs(o.tasa)})</small>` : ""}</strong><span>
         ${o.status === "nuevo" ? `<button class="btn" data-a="confirm" data-id="${o.id}">Confirmar pedido (pago recibido)</button>` : ""}
         ${o.status === "confirmado" ? `<button class="btn ghost" data-a="done" data-id="${o.id}">Marcar entregado</button>` : ""}
         ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">Imprimir factura</button>` : ""}
@@ -111,7 +123,9 @@ td{padding:3px 0;vertical-align:top}td:last-child{text-align:right;white-space:n
 <div><b>FACTURA #${esc(o.number)}</b><br>Fecha: ${fdate(o)}<br>Cliente: ${esc(o.customer?.name)}<br>Tel: ${esc(o.customer?.phone)}<br>
 Tipo: <b>${kind(o)}</b>${o.delivery === "delivery" ? `<br>Dirección: ${esc(o.customer?.address)}` : ""}</div><hr>
 <table>${(o.items || []).map(i => `<tr><td>${esc(i.qty)} x ${esc(i.name)}<br>&nbsp;&nbsp;${money(i.price)} c/u</td><td>${money(i.qty * i.price)}</td></tr>`).join("")}
-<tr class="t"><td>TOTAL</td><td>${money(o.total)}</td></tr></table>
+<tr class="t"><td>TOTAL</td><td>${money(o.total)}</td></tr>
+${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, o.tasa))}</td></tr>
+<tr><td>Tasa</td><td>${formatoBs(o.tasa)}</td></tr>` : ""}</table>
 ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO CONFIRMADO<br>¡Gracias por tu compra!</div></body></html>`);
   w.document.close();
   setTimeout(() => { w.focus(); w.print(); }, 600);
@@ -138,7 +152,7 @@ F().cat.innerHTML = Object.keys(COLLECTIONS).map(c => `<option>${esc(c)}</option
 function renderProducts() {
   $("#plist").innerHTML = products.length ? products.map(p => `
     <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
-      <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}<br><small>${money(p.price)}</small></div>
+      <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}<br><small>${money(p.price)}${TASA ? " · " + formatoBs(aBolivares(p.price, TASA)) : ""}</small></div>
       <div class="a"><button class="btn ghost" data-a="edit" data-id="${p.id}">Editar</button>
         <button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>
         <button class="btn red" data-a="del" data-id="${p.id}">Eliminar</button></div></div>`).join("") : '<p class="mute">Aún no hay productos. Sube el primero con el formulario de arriba.</p>';
