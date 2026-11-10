@@ -1,120 +1,86 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<title>Panel · Dondecamila</title>
-<link rel="icon" href="/images/logo.png">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0}
-body{font-family:"DM Sans",system-ui,sans-serif;background:#f4f2ee;color:#0b0b0b;font-size:14px}
-button,input,select,textarea{font:inherit}
-button{cursor:pointer}
-[hidden]{display:none!important}
-#login{min-height:100vh;display:grid;place-items:center;padding:20px}
-#loginForm{background:#fff;padding:32px;border-radius:12px;width:min(380px,100%);display:flex;flex-direction:column;gap:12px;text-align:center}
-#loginForm img{width:84px;margin:0 auto;border-radius:50%}
-input,select,textarea{border:1px solid #ddd8cf;border-radius:8px;padding:10px 12px;background:#fff;width:100%}
-.btn{background:#0b0b0b;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:500}
-.btn.ghost{background:#fff;color:#0b0b0b;border:1px solid #ddd8cf}
-.btn.red{background:#fff;color:#b3261e;border:1px solid #e8c4c1}
-.err{color:#b3261e;font-size:13px;min-height:16px}
-header{background:#0b0b0b;color:#fff;display:flex;align-items:center;gap:20px;padding:12px 24px;position:sticky;top:0;z-index:5;flex-wrap:wrap}
-header img{width:42px;border-radius:50%}
-header h1{font-size:17px;flex:1}
-nav{display:flex;gap:6px}
-nav button{background:none;border:0;color:#bbb;padding:8px 14px;border-radius:999px}
-nav button.on{background:#fff;color:#0b0b0b;font-weight:700}
-#newCount{background:#d62618;color:#fff;border-radius:999px;padding:1px 7px;font-size:12px;margin-left:4px}
-#newCount:empty{display:none}
-main{max-width:1100px;margin:0 auto;padding:24px}
-.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
-.bar select{width:auto}
-.card{background:#fff;border:1px solid #e6e2db;border-left:5px solid #ccc;border-radius:10px;padding:16px;margin-bottom:12px}
-.card.st-nuevo{border-left-color:#d62618}.card.st-preparando{border-left-color:#f0a500}
-.card.st-encamino{border-left-color:#2f7de1}.card.st-entregado{border-left-color:#25a244}.card.st-cancelado{opacity:.6}
-.h{display:flex;gap:14px;align-items:center;margin-bottom:8px;flex-wrap:wrap}.h span{color:#777;flex:1}.h select{width:auto}
-.card ul{list-style:none;padding:0;margin:10px 0;border-top:1px dashed #ddd;border-bottom:1px dashed #ddd}
-.card li{display:flex;justify-content:space-between;padding:6px 0}
-.f{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.f span{display:flex;gap:8px;flex-wrap:wrap}
-.f a{text-decoration:none;display:inline-block}
-#banner{background:#fde8e6;color:#8a1c14;padding:12px 16px;border-radius:8px;margin-bottom:16px;line-height:1.4}
-.st{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;background:#eee}
-.st.nuevo{background:#fde8e6;color:#b3261e}.st.confirmado{background:#fff3d1;color:#8a5a00}.st.entregado{background:#dff5e3;color:#1a7f37}
-.mute{color:#888;padding:30px;text-align:center}
-#pform{background:#fff;border:1px solid #e6e2db;border-radius:10px;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px}
-#pform .full{grid-column:1/-1}#pform label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#555}
-#pform .chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:#0b0b0b}#pform .chk input{width:auto}
-#preview{max-height:110px;border-radius:8px;margin-top:6px}
-.prow{display:flex;gap:14px;align-items:center;background:#fff;border:1px solid #e6e2db;border-radius:10px;padding:10px;margin-bottom:8px}
-.prow img,.prow .ph{width:64px;height:64px;border-radius:8px;object-fit:cover;background:#222}
-.prow .t{flex:1}.prow small{color:#777}.prow .a{display:flex;gap:6px;flex-wrap:wrap}
-.pill{font-size:11px;background:#eee;border-radius:999px;padding:2px 8px;margin-left:6px}
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0b0b0b;color:#fff;padding:12px 20px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none}
-#toast.show{opacity:1}
-@media(max-width:700px){#pform{grid-template-columns:1fr}main{padding:14px}}
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dondecamila · Fast Food en Puerto Ordaz</title>
+<meta name="description" content="Hamburguesas, perritos calientes y combos con envíos a todo Puerto Ordaz.">
+<link rel="icon" href="images/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<section id="login">
-  <form id="loginForm" onsubmit="return false">
-    <img src="/images/logo.png" alt="Dondecamila">
-    <h2>Panel administrativo</h2>
-    <input name="email" type="email" placeholder="Correo" required autocomplete="username">
-    <input name="password" type="password" placeholder="Contraseña" required autocomplete="current-password">
-    <p class="err" id="err"></p>
-    <button class="btn">Entrar</button>
-  </form>
+<header class="top">
+  <a class="logo" href="#" aria-label="Dondecamila"><img src="images/logo.png" alt="Dondecamila" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'CAMILA',className:'logo-fb'}))"></a>
+  <label class="search">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="search" type="search" placeholder="Busca hamburguesas, perritos, combos…" autocomplete="off">
+  </label>
+  <a class="contact" id="contactLink" target="_blank" rel="noopener">Contacto ↗</a>
+  <button class="order-btn" id="openCart" aria-label="Abrir pedido">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+    Pedido <span class="badge" id="cartCount">0</span>
+  </button>
+</header>
+
+<section class="hero">
+  <p class="eyebrow"><i></i>Hecho para tu antojo<i></i></p>
+  <h1>DONDECAMILA</h1>
+  <p class="sub">Fast Food de Calidad <b>·</b> Envíos a todo Puerto Ordaz</p>
+  <svg class="utensils" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7M2.1 21.8l6.4-6.3"/></svg>
 </section>
 
-<div id="panel" hidden>
-  <header>
-    <img src="/images/logo.png" alt="">
-    <h1>Panel Dondecamila</h1>
-    <nav>
-      <button class="on" data-t="orders">Pedidos <b id="newCount"></b></button>
-      <button data-t="products">Subir producto</button>
-    </nav>
-    <div id="tasa-admin"></div>
-    <button class="btn ghost" id="logout">Salir</button>
-  </header>
-  <main>
-    <p id="banner" hidden></p>
-    <section id="orders">
-      <div class="bar"><h2>Pedidos</h2>
-        <select id="filter"><option value="">Todos</option><option value="nuevo">Pendientes de pago</option><option value="confirmado">Confirmados</option><option value="entregado">Entregados</option><option value="cancelado">Cancelados</option></select>
+<main>
+  <nav class="chips" id="chips"></nav>
+  <div class="section-head">
+    <div><small>EL SABOR DE LA CIUDAD</small><h2>Elige tu próximo antojo.</h2></div>
+    <span id="count"></span>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="empty" id="empty" hidden>No encontramos productos con esa búsqueda.</p>
+</main>
+
+<a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.2 14.2c-.2.6-1.300 1.200-1.800 1.200-.5.1-1 .2-3.300-.7-2.800-1.100-4.600-3.900-4.700-4.100-.1-.2-1.100-1.500-1.100-2.800s.7-2 1-2.300c.2-.3.500-.3.700-.3h.5c.2 0 .4 0 .6.500l.9 2.100c.1.2.1.400 0 .6l-.4.600-.4.400c-.1.200-.3.400-.1.700.2.300.8 1.300 1.700 2.100 1.100 1 2.100 1.300 2.400 1.400.3.100.5.100.7-.1l1-1.200c.2-.3.400-.2.700-.1l2 1c.3.100.5.200.6.300.1.200.1.700-.1 1.300Z"/></svg>
+</a>
+
+<div class="overlay" id="overlay" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head"><h3>Tu pedido</h3><button id="closeCart" aria-label="Cerrar">✕</button></div>
+  <div class="drawer-body" id="cartItems"></div>
+  <form class="drawer-foot" id="checkout">
+    <div class="total"><span>Total</span><strong id="total">$0.00</strong></div>
+    <input name="name" placeholder="Tu nombre" required>
+    <input name="phone" type="tel" placeholder="Tu teléfono" required>
+    <div class="mode" style="display:flex;gap:18px;font-size:14px">
+      <label><input type="radio" name="mode" value="retiro" checked style="width:auto;padding:0;margin-right:6px">Retiro en local</label>
+      <label><input type="radio" name="mode" value="delivery" style="width:auto;padding:0;margin-right:6px">Delivery</label>
+    </div>
+    <input name="address" id="address" placeholder="Dirección de entrega" hidden>
+    <textarea name="notes" rows="2" placeholder="Notas (sin cebolla, extra salsa…)"></textarea>
+    <button class="send" type="submit">Enviar pedido por WhatsApp</button>
+    <button class="clear" type="button" id="clearCart">Vaciar pedido</button>
+  </form>
+</aside>
+<div class="modal" id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mName">
+    <button class="mclose" id="mClose" aria-label="Cerrar">✕</button>
+    <div class="mimg" id="mImg"></div>
+    <div class="mbody">
+      <small id="mCat"></small>
+      <h3 id="mName"></h3>
+      <p id="mDesc"></p>
+      <div class="mfoot"><strong id="mPrice"></strong>
+        <div class="qty"><button id="mMinus" aria-label="Menos">−</button><span id="mQty">1</span><button id="mPlus" aria-label="Más">+</button></div>
       </div>
-      <div id="ordersList"></div>
-    </section>
-    <section id="products" hidden>
-      <div class="bar"><h2 id="ptitle">Nuevo producto</h2></div>
-      <form id="pform">
-        <input type="hidden" name="pid">
-        <label>Nombre<input name="n" required></label>
-        <label>Categoría<select name="cat" required></select></label>
-        <label>Precio<input name="price" type="number" step="0.01" min="0" required></label>
-        <label>Etiqueta (opcional)<input name="badge" placeholder="LA FAVORITA"></label>
-        <label class="full">Descripción<textarea name="desc" rows="2"></textarea></label>
-        <label class="full">Foto<input name="img" type="file" accept="image/*"><img id="preview" hidden alt=""></label>
-        <label class="chk"><input type="checkbox" name="sold"> Agotado</label>
-        <label class="chk"><input type="checkbox" name="act" checked> Visible en la tienda</label>
-        <div class="full"><button class="btn" id="saveBtn">Guardar producto</button> <button type="button" class="btn ghost" id="cancelEdit" hidden>Cancelar edición</button></div>
-      </form>
-      <div id="plist"></div>
-    </section>
-  </main>
+      <button class="madd" id="mAdd">Agregar al pedido</button>
+    </div>
+  </div>
 </div>
-<div id="toast"></div>
-<script>
-window.addEventListener("error", function (e) { window.__adminErr = e.message; });
-setTimeout(function () {
-  if (window.__adminReady) return;
-  document.getElementById("err").textContent =
-    "No se pudo cargar el panel. " + (window.__adminErr ? "Detalle: " + window.__adminErr + ". " : "") +
-    "Revisa que firebase-config.js y admin/admin.js estén actualizados en GitHub.";
-}, 3000);
-</script>
-<script type="module" src="/admin/admin.js"></script>
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
 </body>
 </html>
