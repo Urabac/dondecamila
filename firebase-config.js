@@ -10,6 +10,9 @@ export const SETTINGS = {
   currency: "$"
 };
 
+/* Colección de pedidos de Dondecamila (no usar "orders": ya la usa ServiDO) */
+export const ORDERS = "dc_pedidos";
+
 /* Colecciones de la tienda: "Nombre visible": "nombre exacto de la colección en Firestore"
    La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada. */
 export const COLLECTIONS = {
