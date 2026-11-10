@@ -14,17 +14,45 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .price-bs{display:flex;flex-direction:column;line-height:1.15}
   .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
   #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
-  .drinks{grid-column:1/-1;width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:6px 22px 8px}
+  .drinks{box-sizing:border-box;grid-column:1/-1;width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:6px 22px 8px}
   .drinks-t{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:14px 0 4px}
-  .drink-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid rgba(0,0,0,.07)}
+  .drink-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;padding:14px 0;border-top:1px solid rgba(0,0,0,.07)}
   .drinks-t + .drink-row{border-top:0}
-  .drink-row .dn{flex:1;min-width:0}
-  .drink-row .dn b{display:block;font-weight:500}
+  .drink-row .dn{min-width:0}
+  .drink-row .dn b{display:block;font-weight:500;overflow-wrap:anywhere}
   .drink-row .dn small{font-size:12px;color:#b3261e}
-  .drink-row .dp{text-align:right;white-space:nowrap;display:flex;flex-direction:column;line-height:1.2}
+  .drink-row .dp{text-align:right;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
   .drink-row .dp small{font-size:12px;opacity:.6}
+  .drink-row .add{width:auto!important;min-width:0;flex:none;margin:0!important;padding-left:22px;padding-right:22px;white-space:nowrap}
   .drink-row.sold .dn b,.drink-row.sold .dp{opacity:.45}
-  @media (max-width:520px){.drinks{padding:4px 14px 6px}.drink-row{gap:10px}}
+  /* Teléfono: nombre arriba; precio y botón abajo */
+  @media (max-width:560px){
+    .drinks{padding:4px 14px 6px}
+    .drink-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px;column-gap:12px}
+    .drink-row .dn{grid-column:1/-1}
+    .drink-row .dp{text-align:left;align-items:flex-start}
+  }
+
+  /* "¿Y la bebida?" dentro del carrito */
+  #drinkUpsell{margin:12px 0 4px}
+  #drinkUpsell *{box-sizing:border-box}
+  .up-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px;border-radius:12px;
+    border:1.5px dashed rgba(0,0,0,.25);background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}
+  .up-btn:hover{border-color:rgba(0,0,0,.55);background:rgba(0,0,0,.03)}
+  .up-box{border:1px solid rgba(0,0,0,.1);border-radius:14px;overflow:hidden;animation:upIn .18s ease}
+  @keyframes upIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .up-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(0,0,0,.035)}
+  .up-head b{font-size:14px}
+  .up-done{border:0;background:#0b0b0b;color:#fff;border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .up-list{max-height:260px;overflow-y:auto}
+  .up-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid rgba(0,0,0,.07)}
+  .up-row .un{flex:1;min-width:0}
+  .up-row .un b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}
+  .up-row .un small{font-size:12px;opacity:.6}
+  .up-q{display:flex;align-items:center;gap:8px;flex:none}
+  .up-q button{width:30px;height:30px;border-radius:50%;border:1px solid rgba(0,0,0,.2);background:#fff;color:#0b0b0b;font-size:16px;line-height:1;cursor:pointer}
+  .up-q button.plus{background:#0b0b0b;color:#fff;border-color:#0b0b0b}
+  .up-q span{min-width:16px;text-align:center;font-weight:600}
 </style>`);
 const BEBIDAS = "Bebidas";
 escucharTasa(v => {
@@ -159,7 +187,44 @@ function renderCart() {
       <div><b>${p.name}</b><small>${money(p.price)} c/u${TASA ? " · " + bs(p.price) : ""}</small></div>
       <div class="qty"><button data-a="-" data-id="${p.id}">−</button><span>${q}</span><button data-a="+" data-id="${p.id}">+</button></div>
     </div>`).join("") : '<p class="empty-cart">Tu pedido está vacío. Agrega algo del menú.</p>';
+  renderUpsell(items);
 }
+
+/* ¿Y la bebida? Si el pedido no tiene bebida, el carrito ofrece agregarla sin salir */
+let upsellOpen = false;
+function renderUpsell(items) {
+  if (!$("#drinkUpsell")) { const d = document.createElement("div"); d.id = "drinkUpsell"; $("#cartItems").after(d); }
+  const box = $("#drinkUpsell");
+  const disponibles = PRODUCTS.filter(p => p.category === BEBIDAS && !p.soldOut);
+  const tieneComida = items.some(i => i.p.category !== BEBIDAS);
+  const tieneBebida = items.some(i => i.p.category === BEBIDAS);
+  if (!items.length || !disponibles.length || !tieneComida) upsellOpen = false;
+  if (!items.length || !disponibles.length || !tieneComida || (tieneBebida && !upsellOpen)) { box.innerHTML = ""; return; }
+
+  box.innerHTML = upsellOpen ? `
+    <div class="up-box">
+      <div class="up-head"><b>🥤 Bebidas</b><button type="button" class="up-done" data-up="close">Listo</button></div>
+      <div class="up-list">${disponibles.map(p => {
+        const q = cart[p.id] || 0;
+        return `
+        <div class="up-row">
+          <div class="un"><b>${p.name}</b><small>${money(p.price)}${TASA ? " · " + bs(p.price) : ""}</small></div>
+          <div class="up-q">${q ? `<button type="button" data-up="-" data-id="${p.id}" aria-label="Quitar">−</button><span>${q}</span>` : ""}
+            <button type="button" class="plus" data-up="+" data-id="${p.id}" aria-label="Agregar ${p.name}">+</button></div>
+        </div>`;
+      }).join("")}</div>
+    </div>` : `
+    <button type="button" class="up-btn" data-up="open">🥤 ¿Y la bebida? Agregar bebida</button>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("#drinkUpsell [data-up]"); if (!b) return;
+  const a = b.dataset.up, id = b.dataset.id;
+  if (a === "open") upsellOpen = true;
+  if (a === "close") upsellOpen = false;
+  if (a === "+") cart[id] = (cart[id] || 0) + 1;
+  if (a === "-") { cart[id] = (cart[id] || 0) - 1; if (cart[id] <= 0) delete cart[id]; }
+  save(); renderCart();
+});
 $("#cartItems").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const id = b.dataset.id; cart[id] = (cart[id] || 0) + (b.dataset.a === "+" ? 1 : -1);
