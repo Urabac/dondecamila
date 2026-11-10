@@ -1,4 +1,4 @@
-import { db, SETTINGS } from "./firebase-config.js";
+import { db, SETTINGS, COLLECTIONS } from "./firebase-config.js";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = s => document.querySelector(s);
@@ -11,17 +11,22 @@ const save = () => { try { localStorage.setItem("dc-cart", JSON.stringify(cart))
 $("#contactLink").href = $("#waFloat").href = `https://wa.me/${whatsapp}`;
 $("#empty").hidden = false; $("#empty").textContent = "Cargando menú…";
 
-/* Productos en vivo desde Firestore */
-onSnapshot(query(collection(db, "products"), orderBy("createdAt", "desc")), snap => {
-  PRODUCTS = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false);
-  renderChips(); renderGrid(); renderCart();
-}, err => {
-  console.error(err);
-  $("#empty").hidden = false; $("#empty").textContent = "No se pudo cargar el menú. Intenta de nuevo en unos minutos.";
+/* Productos en vivo: solo de las colecciones definidas en COLLECTIONS */
+const LABELS = Object.keys(COLLECTIONS), byCol = {};
+LABELS.forEach(label => {
+  onSnapshot(collection(db, COLLECTIONS[label]), snap => {
+    byCol[label] = snap.docs.map(d => ({ id: d.id, col: COLLECTIONS[label], ...d.data(), category: label }));
+    PRODUCTS = LABELS.flatMap(l => (byCol[l] || []).slice().sort((x, y) => (y.createdAt?.seconds || 0) - (x.createdAt?.seconds || 0)))
+      .filter(p => p.active !== false);
+    renderChips(); renderGrid(); renderCart();
+  }, err => {
+    console.error(err);
+    $("#empty").hidden = false; $("#empty").textContent = "No se pudo cargar el menú. Intenta de nuevo en unos minutos.";
+  });
 });
 
 function renderChips() {
-  const cats = ["Todos", ...new Set(PRODUCTS.map(p => p.category).filter(Boolean))];
+  const cats = ["Todos", ...LABELS.filter(l => PRODUCTS.some(p => p.category === l))];
   if (!cats.includes(category)) category = "Todos";
   $("#chips").innerHTML = cats.map(c => `<button class="chip${c === category ? " on" : ""}" data-c="${c}">${c}</button>`).join("");
 }
