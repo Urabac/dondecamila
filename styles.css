@@ -6,7 +6,7 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 
 .top{display:flex;align-items:center;gap:32px;padding:22px max(24px,calc((100% - 1260px)/2));background:#fff;position:sticky;top:0;z-index:20}
-.logo img,.logo-fb{width:62px;height:62px;border-radius:50%;object-fit:cover;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:11px;font-weight:700}
+.logo img,.logo-fb{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#000;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:11px;font-weight:700}
 .search{flex:1;max-width:660px;display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--muted)}
 .search input{flex:1;border:0;background:none;outline:0;color:var(--ink);font-size:14px}
 .contact{margin-left:auto;color:var(--ink);text-decoration:none;font-size:14px;font-weight:500}
