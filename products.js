@@ -1,6 +1,6 @@
 /* ====== EDITA AQUÍ ====== */
 window.CONFIG = {
-  whatsapp: "58XXXXXXXXXX",   // Tu número con código de país, sin + ni espacios. Ej: 584121234567
+  whatsapp: "584161825375",   // Tu número con código de país, sin + ni espacios. Ej: 584121234567
   currency: "$"
 };
 
