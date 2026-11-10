@@ -1,6 +1,6 @@
 /* ====== EDITA AQUÍ ====== */
 window.CONFIG = {
-  whatsapp: "584161825375",   // Tu número con código de país, sin + ni espacios. Ej: 584121234567
+  whatsapp: "584161825375",   // 0416-1825375
   currency: "$"
 };
 
@@ -8,7 +8,7 @@ window.CONFIG = {
    badge: texto de la etiqueta (ej. "LA FAVORITA")
    image: ruta dentro de /images */
 window.PRODUCTS = [
-  { id: 1, name: "Hamburguesa Wasaro Suprema", category: "Hamburguesas", price: 8.5,
+  { id: 1, name: "Hamburguesa Camila Suprema", category: "Hamburguesas", price: 8.5,
     description: "Doble carne, queso cheddar, tocineta crocante y lechuga fresca.",
     image: "images/hamburguesa.jpg", badge: "LA FAVORITA", soldOut: false },
   { id: 2, name: "Perrito Caliente Especial", category: "Perritos Calientes", price: 5,
