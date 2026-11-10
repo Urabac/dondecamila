@@ -64,6 +64,21 @@
     <button class="clear" type="button" id="clearCart">Vaciar pedido</button>
   </form>
 </aside>
+<div class="modal" id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mName">
+    <button class="mclose" id="mClose" aria-label="Cerrar">✕</button>
+    <div class="mimg" id="mImg"></div>
+    <div class="mbody">
+      <small id="mCat"></small>
+      <h3 id="mName"></h3>
+      <p id="mDesc"></p>
+      <div class="mfoot"><strong id="mPrice"></strong>
+        <div class="qty"><button id="mMinus" aria-label="Menos">−</button><span id="mQty">1</span><button id="mPlus" aria-label="Más">+</button></div>
+      </div>
+      <button class="madd" id="mAdd">Agregar al pedido</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script type="module" src="app.js"></script>
