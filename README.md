@@ -1,9 +1,9 @@
-# WasaroUrbanFoodPZO
+# DondeCamila
 
 Sitio estático (HTML + CSS + JS) con menú, buscador, filtros, carrito y envío del pedido por WhatsApp.
 
 ## Antes de subir
-1. Abre `products.js` y cambia `whatsapp` por tu número (ej. `584121234567`), y ajusta productos y precios.
+1. Abre `products.js` y cambia `whatsapp` por tu número (ej. `584161825375`), y ajusta productos y precios.
 2. Copia tus imágenes a la carpeta `images/` con estos nombres:
    `logo.png`, `hamburguesa.jpg`, `perrito.jpg`, `salchipapa.jpg`, `quesitos.jpg`
    (o cambia las rutas en `products.js`).
