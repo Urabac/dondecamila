@@ -15,9 +15,11 @@ export const ORDERS = "dc_pedidos";
 
 /* Colecciones de la tienda: "Nombre visible": "nombre exacto de la colección en Firestore"
    La tienda y el panel SOLO leen estas colecciones. Si una está vacía, no se muestra nada.
-   "Bebidas" debe llamarse exactamente así: el panel y la tienda la tratan distinto
-   (solo nombre y precio, y en la tienda se muestran en lista compacta). */
+   "Combos" y "Bebidas" deben llamarse exactamente así: el panel y la tienda los tratan distinto.
+   Los adicionales (papas extra, etc.) van en la colección "adicionales" y no se listan aquí,
+   porque no se muestran como productos: se ofrecen al pedir un producto que los permite. */
 export const COLLECTIONS = {
+  "Combos": "combos",
   "Perros Calientes": "perros_calientes",
   "Hamburguesas de Carne": "hamburguesas_carne",
   "Hamburguesas de Pollo": "hamburguesas_pollo",
