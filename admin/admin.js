@@ -133,7 +133,7 @@ $("#ordersList").addEventListener("click", e => {
   if (a === "confirm" && confirm(`¿Confirmar que el pedido #${o.number} fue pagado?`)) setStatus(o.id, "confirmado", { confirmedAt: serverTimestamp() });
   if (a === "done") setStatus(o.id, "entregado");
   if (a === "cancel" && confirm(`¿Cancelar el pedido #${o.number}?`)) setStatus(o.id, "cancelado");
-  if (a === "print") printInvoice(o);
+  if (a === "print") ES_ANDROID ? imprimirRawBT(o) : printInvoice(o);
   if (a === "del" && confirm(`¿Eliminar el pedido #${o.number}? No se puede deshacer.`)) deleteDoc(doc(db, ORDERS, o.id)).catch(x => toast(x.message));
 });
 
@@ -157,6 +157,87 @@ ${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, 
 ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO CONFIRMADO<br>¡Gracias por tu compra!</div></body></html>`);
   w.document.close();
   setTimeout(() => { w.focus(); w.print(); }, 600);
+}
+
+/* ---------- Ticket para impresora térmica (tablet Android + app RawBT) ----------
+   En Android, "Imprimir factura" manda el ticket directo a RawBT en formato ESC/POS:
+   sin ventana de impresión y con el ancho exacto del rollo.
+   TICKET_COLS: 48 para rollo de 80 mm · 32 para rollo de 58 mm. */
+const TICKET_COLS = 48;
+const ES_ANDROID = /Android/i.test(navigator.userAgent);
+const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A, "É": 0x90, "¿": 0xA8, "¡": 0xAD };
+function aBytes(str) {
+  const out = [];
+  for (const ch of String(str ?? "")) {
+    const c = ch.charCodeAt(0);
+    if (c >= 32 && c < 127) out.push(c);
+    else if (CP437[ch]) out.push(CP437[ch]);
+    else if (/\s/.test(ch)) out.push(32);
+    else for (const x of ch.normalize("NFD").replace(/[̀-ͯ]/g, "")) out.push(x.charCodeAt(0) < 127 ? x.charCodeAt(0) : 63);
+  }
+  return out;
+}
+function partir(texto, ancho) {
+  const lineas = []; let actual = "";
+  for (let p of String(texto ?? "").split(/\s+/).filter(Boolean)) {
+    while (p.length > ancho) { if (actual) { lineas.push(actual); actual = ""; } lineas.push(p.slice(0, ancho)); p = p.slice(ancho); }
+    if (!p) continue;
+    if (!actual) actual = p;
+    else if ((actual + " " + p).length <= ancho) actual += " " + p;
+    else { lineas.push(actual); actual = p; }
+  }
+  if (actual) lineas.push(actual);
+  return lineas.length ? lineas : [""];
+}
+function ticketBytes(o) {
+  const W = TICKET_COLS, ESC = 0x1B, GS = 0x1D, B = [];
+  const cmd = (...b) => B.push(...b);
+  const ln = (s = "") => { B.push(...aBytes(s), 0x0A); };
+  const sep = () => ln("-".repeat(W));
+  const fila = (izq, der) => {
+    const partes = partir(izq, W - der.length - 1);
+    partes.forEach((p, i) => ln(i === 0 ? p.padEnd(W - der.length) + der : p));
+  };
+  const bloque = (texto, sangria = "") => partir(texto, W - sangria.length).forEach(l => ln(sangria + l));
+  const centro = on => cmd(ESC, 0x61, on ? 1 : 0);
+  const negrita = on => cmd(ESC, 0x45, on ? 1 : 0);
+  const tamaño = n => cmd(GS, 0x21, n);   // 0 normal · 0x01 doble alto · 0x11 doble alto y ancho
+
+  cmd(ESC, 0x40, ESC, 0x74, 0x00);       // reiniciar impresora · tabla de caracteres PC437 (acentos y ñ)
+  centro(true); negrita(true); tamaño(0x11); ln(SETTINGS.business); tamaño(0); negrita(false);
+  ln("Tel: " + SETTINGS.phone);
+  centro(false); sep();
+  negrita(true); ln("FACTURA #" + o.number); negrita(false);
+  ln("Fecha: " + fdate(o));
+  bloque("Cliente: " + (o.customer?.name || ""));
+  ln("Tel: " + (o.customer?.phone || ""));
+  negrita(true); ln("Tipo: " + kind(o)); negrita(false);
+  if (o.delivery === "delivery") bloque("Dirección: " + (o.customer?.address || ""));
+  sep();
+  (o.items || []).forEach(i => {
+    fila(`${i.qty} x ${i.name}`, money(i.qty * i.price));
+    if (i.detail) bloque("(" + i.detail + ")", "   ");
+    if (i.qty > 1) ln("   " + money(i.price) + " c/u");
+  });
+  sep();
+  negrita(true); tamaño(0x01);
+  fila("TOTAL", money(o.total));
+  if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
+  tamaño(0); negrita(false);
+  if (o.tasa) fila("Tasa", formatoBs(o.tasa));
+  if (o.notes) { sep(); bloque("Notas: " + o.notes); }
+  sep();
+  centro(true); negrita(true); ln("PAGO CONFIRMADO"); negrita(false); ln("¡Gracias por tu compra!"); centro(false);
+  cmd(ESC, 0x64, 5);                     // avanzar papel
+  cmd(GS, 0x56, 0x42, 0x00);             // cortar (si la impresora tiene cortador)
+  return B;
+}
+function imprimirRawBT(o) {
+  const bytes = ticketBytes(o);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 4096) bin += String.fromCharCode(...bytes.slice(i, i + 4096));
+  // Si RawBT no está instalado, Android abre la Play Store para instalarlo
+  location.href = "intent:base64," + btoa(bin) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
 }
 
 /* ---------- Subir producto ---------- */
