@@ -18,6 +18,9 @@ import("/tasa.js").then(m => {
 // Bs. de un pedido: usa la tasa guardada en el pedido (la del momento en que se hizo)
 const bsPedido = (o, usd) => o.tasa ? " · " + formatoBs(aBolivares(usd, o.tasa)) : "";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* Categorías del panel: las de la tienda + "Adicionales" (estos no se muestran como productos en la tienda) */
+const BEBIDAS = "Bebidas", COMBOS = "Combos", ADIC = "Adicionales";
+const CATS = { ...COLLECTIONS, [ADIC]: "adicionales" };
 const LABEL = { nuevo: "Pendiente de pago", confirmado: "Confirmado", entregado: "Entregado", cancelado: "Cancelado" };
 let orders = [], products = [], unsubs = [], first = true; const byCol = {};
 
@@ -53,17 +56,17 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
 
 function start() {
   first = true;
-  unsubs.push(onSnapshot(query(collection(db, ORDERS), orderBy("createdAt", "desc"), limit(200)), snap => {
+  unsubs.push(onSnapshot(query(collection(db, ORDERS), orderBy("createdAt", "desc"), limit(600)), snap => {
     banner("");
     if (!first && snap.docChanges().some(c => c.type === "added" && !c.doc.metadata.hasPendingWrites)) beep();
     first = false;
     orders = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderOrders();
   }, e => dbErr("los pedidos", e)));
-  Object.entries(COLLECTIONS).forEach(([label, col]) => {
+  Object.entries(CATS).forEach(([label, col]) => {
     unsubs.push(onSnapshot(collection(db, col), snap => {
       byCol[label] = snap.docs.map(d => ({ id: d.id, col, ...d.data(), category: label }));
       products = Object.values(byCol).flat().sort((x, y) => (y.createdAt?.seconds || 0) - (x.createdAt?.seconds || 0));
-      renderProducts();
+      renderProducts(); renderComboPick();
     }, e => dbErr("los productos (" + label + ")", e)));
   });
 }
@@ -75,10 +78,34 @@ function beep() {
 /* ---------- Pedidos ---------- */
 const fdate = o => { const d = o.createdAt?.toDate?.(); return d ? d.toLocaleString("es-VE") : "…"; };
 const waNum = p => { let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "58" + d.slice(1); return d; };
-const kind = o => o.delivery === "delivery" ? "Delivery" : "Retiro en local";
+const kind = o => ({ delivery: "Delivery", comer: "Comer aquí" })[o.delivery] || "Retiro en local";
 
+/* Periodo: hoy / ayer / esta semana (desde el lunes) / este mes */
+function rangoFechas(r) {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const dia = 864e5;
+  if (r === "hoy") return [hoy, null];
+  if (r === "ayer") return [new Date(hoy - dia), hoy];
+  if (r === "semana") { const d = new Date(hoy); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [d, null]; }
+  if (r === "mes") return [new Date(hoy.getFullYear(), hoy.getMonth(), 1), null];
+  return [null, null];
+}
 function renderOrders() {
-  const f = $("#filter").value, list = orders.filter(o => !f || o.status === f);
+  const f = $("#filter").value, q = $("#q").value.replace(/\D/g, "");
+  const [desde, hasta] = rangoFechas($("#range").value);
+  const list = orders.filter(o => {
+    if (f && o.status !== f) return false;
+    if (q && !String(o.number || "").includes(q)) return false;
+    const d = o.createdAt?.toDate?.();
+    if (desde && (!d || d < desde)) return false;
+    if (hasta && (!d || d >= hasta)) return false;
+    return true;
+  });
+  const validos = list.filter(o => o.status !== "cancelado");
+  const suma = validos.reduce((s, o) => s + Number(o.total || 0), 0);
+  $("#osum").textContent = list.length
+    ? `${list.length} pedido${list.length === 1 ? "" : "s"} · Vendido: ${money(suma)}${validos.some(o => o.totalBs) ? " · " + formatoBs(validos.reduce((s, o) => s + Number(o.totalBs || 0), 0)) : ""}`
+    : "";
   $("#newCount").textContent = orders.filter(o => o.status === "nuevo").length || "";
   $("#ordersList").innerHTML = list.length ? list.map(o => {
     const paid = o.status === "confirmado" || o.status === "entregado";
@@ -86,7 +113,7 @@ function renderOrders() {
     <article class="card st-${esc(o.status)}">
       <div class="h"><b>Pedido #${esc(o.number)}</b><span>${fdate(o)}</span><span class="st ${esc(o.status)}" style="flex:none">${LABEL[o.status] || esc(o.status)}</span></div>
       <p><b>${esc(o.customer?.name)}</b> · ${esc(o.customer?.phone)}<br><b>${kind(o)}</b>${o.delivery === "delivery" ? " · " + esc(o.customer?.address) : ""}${o.notes ? `<br><i>Notas: ${esc(o.notes)}</i>` : ""}</p>
-      <ul>${(o.items || []).map(i => `<li><span>${esc(i.qty)} × ${esc(i.name)}</span><span>${money(i.qty * i.price)}</span></li>`).join("")}</ul>
+      <ul>${(o.items || []).map(i => `<li><span>${esc(i.qty)} × ${esc(i.name)}${i.detail ? `<br><small style="color:#777">${esc(i.detail)}</small>` : ""}</span><span>${money(i.qty * i.price)}</span></li>`).join("")}</ul>
       <div class="f"><strong>Total ${money(o.total)}${bsPedido(o, o.total)}${o.tasa ? `<small style="font-weight:400;color:#777"> (tasa ${formatoBs(o.tasa)})</small>` : ""}</strong><span>
         ${o.status === "nuevo" ? `<button class="btn" data-a="confirm" data-id="${o.id}">Confirmar pedido (pago recibido)</button>` : ""}
         ${o.status === "confirmado" ? `<button class="btn ghost" data-a="done" data-id="${o.id}">Marcar entregado</button>` : ""}
@@ -95,9 +122,10 @@ function renderOrders() {
         ${o.status === "nuevo" ? `<button class="btn red" data-a="cancel" data-id="${o.id}">Cancelar</button>` : ""}
         <button class="btn red" data-a="del" data-id="${o.id}">Eliminar</button></span></div>
     </article>`;
-  }).join("") : '<p class="mute">Aún no hay pedidos. Cuando un cliente pida desde la tienda, aparecerá aquí.</p>';
+  }).join("") : `<p class="mute">${orders.length ? "No hay pedidos con estos filtros." : "Aún no hay pedidos. Cuando un cliente pida desde la tienda, aparecerá aquí."}</p>`;
 }
-$("#filter").onchange = renderOrders;
+$("#filter").onchange = $("#range").onchange = renderOrders;
+$("#q").oninput = renderOrders;
 const setStatus = (id, status, extra = {}) => updateDoc(doc(db, ORDERS, id), { status, ...extra }).catch(x => toast("Error: " + x.message));
 $("#ordersList").addEventListener("click", e => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
@@ -122,7 +150,7 @@ td{padding:3px 0;vertical-align:top}td:last-child{text-align:right;white-space:n
 <div>Tel: ${esc(SETTINGS.phone)}</div></div><hr>
 <div><b>FACTURA #${esc(o.number)}</b><br>Fecha: ${fdate(o)}<br>Cliente: ${esc(o.customer?.name)}<br>Tel: ${esc(o.customer?.phone)}<br>
 Tipo: <b>${kind(o)}</b>${o.delivery === "delivery" ? `<br>Dirección: ${esc(o.customer?.address)}` : ""}</div><hr>
-<table>${(o.items || []).map(i => `<tr><td>${esc(i.qty)} x ${esc(i.name)}<br>&nbsp;&nbsp;${money(i.price)} c/u</td><td>${money(i.qty * i.price)}</td></tr>`).join("")}
+<table>${(o.items || []).map(i => `<tr><td>${esc(i.qty)} x ${esc(i.name)}${i.detail ? `<br>&nbsp;&nbsp;(${esc(i.detail)})` : ""}<br>&nbsp;&nbsp;${money(i.price)} c/u</td><td>${money(i.qty * i.price)}</td></tr>`).join("")}
 <tr class="t"><td>TOTAL</td><td>${money(o.total)}</td></tr>
 ${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, o.tasa))}</td></tr>
 <tr><td>Tasa</td><td>${formatoBs(o.tasa)}</td></tr>` : ""}</table>
@@ -147,32 +175,67 @@ const toData = file => new Promise((ok, fail) => {
   r.readAsDataURL(file);
 });
 const F = () => $("#pform").elements;
-F().cat.innerHTML = Object.keys(COLLECTIONS).map(c => `<option>${esc(c)}</option>`).join("");
+// Orden del selector: productos normales primero; luego Combos, Bebidas y Adicionales
+const ESPECIALES = [COMBOS, BEBIDAS, ADIC];
+F().cat.innerHTML = [...Object.keys(CATS).filter(c => !ESPECIALES.includes(c)), ...ESPECIALES.filter(c => CATS[c])]
+  .map(c => `<option>${esc(c)}</option>`).join("");
 
-/* Bebidas: solo nombre, precio, agotado y visible (sin descripción, etiqueta ni foto) */
-const BEBIDAS = "Bebidas";
-const esBebida = () => F().cat.value === BEBIDAS;
+/* Campos según la categoría:
+   - Bebidas: nombre, precio, agotado, visible
+   - Adicionales: solo nombre y precio
+   - Combos: todo + elegir los productos que incluye */
 function camposSegunCategoria() {
-  const b = esBebida();
-  [F().desc, F().badge, F().img].forEach(el => el.closest("label").hidden = b);
-  if (b) $("#preview").hidden = true;
-  F().n.placeholder = b ? "Ej: Pepsi-Cola 2 litros" : "";
+  const c = F().cat.value, isB = c === BEBIDAS, isA = c === ADIC, isC = c === COMBOS;
+  const ocultar = (el, h) => el.closest("label").hidden = h;
+  [F().desc, F().badge, F().img].forEach(el => ocultar(el, isB || isA));
+  [F().sold, F().act].forEach(el => ocultar(el, isA));
+  ocultar(F().extras, isB || isA);
+  $("#comboBox").hidden = !isC;
+  if (isB || isA) $("#preview").hidden = true;
+  F().n.placeholder = isB ? "Ej: Pepsi-Cola 2 litros" : isA ? "Ej: Papas extra" : isC ? "Ej: Combo Familiar" : "";
+  $("#saveBtn").textContent = isA ? "Guardar adicional" : isC ? "Guardar combo" : "Guardar producto";
+  if (isC) renderComboPick();
 }
 F().cat.onchange = camposSegunCategoria;
+
+/* Selector de productos del combo */
+let comboSel = {};   // { idProducto: cantidad }
+function renderComboPick() {
+  const box = $("#comboPick"); if (!box || $("#comboBox").hidden) return;
+  const elegibles = products.filter(p => p.category !== COMBOS && p.category !== ADIC)
+    .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  box.innerHTML = elegibles.length ? elegibles.map(p => {
+    const q = comboSel[p.id] || 0;
+    return `<div class="cp${q ? " on" : ""}"><span><b>${esc(p.name)}</b><small>${esc(p.category)} · ${money(p.price)}</small></span>
+      <span class="cpq">${q ? `<button type="button" data-cp="-" data-id="${p.id}">−</button><b>${q}</b>` : ""}<button type="button" class="plus" data-cp="+" data-id="${p.id}">+</button></span></div>`;
+  }).join("") : '<p class="mute" style="padding:12px">Primero sube productos para poder armar combos.</p>';
+  const sel = Object.entries(comboSel).filter(([, q]) => q > 0);
+  const separado = sel.reduce((s, [id, q]) => s + (products.find(p => p.id === id)?.price || 0) * q, 0);
+  $("#comboSum").textContent = sel.length
+    ? `${sel.reduce((s, [, q]) => s + q, 0)} producto(s) · Precio por separado: ${money(separado)}. Pon un precio menor para que el cliente vea cuánto ahorra.`
+    : "Toca + para agregar productos al combo.";
+}
+$("#comboPick").addEventListener("click", e => {
+  const b = e.target.closest("[data-cp]"); if (!b) return;
+  const id = b.dataset.id;
+  comboSel[id] = Math.max(0, Math.min(20, (comboSel[id] || 0) + (b.dataset.cp === "+" ? 1 : -1)));
+  if (!comboSel[id]) delete comboSel[id];
+  renderComboPick();
+});
 camposSegunCategoria();
 
 function renderProducts() {
   $("#plist").innerHTML = products.length ? products.map(p => `
     <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
-      <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}<br><small>${money(p.price)}${TASA ? " · " + formatoBs(aBolivares(p.price, TASA)) : ""}</small></div>
+      <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}${p.extras ? '<span class="pill">+ Adicionales</span>' : ""}<br><small>${money(p.price)}${TASA ? " · " + formatoBs(aBolivares(p.price, TASA)) : ""}${p.items?.length ? " · Incluye: " + esc(p.items.map(i => i.qty + " " + i.name).join(", ")) : ""}</small></div>
       <div class="a"><button class="btn ghost" data-a="edit" data-id="${p.id}">Editar</button>
-        <button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>
+        ${p.category === ADIC ? "" : `<button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>`}
         <button class="btn red" data-a="del" data-id="${p.id}">Eliminar</button></div></div>`).join("") : '<p class="mute">Aún no hay productos. Sube el primero con el formulario de arriba.</p>';
 }
 function resetForm() {
   $("#pform").reset(); F().pid.value = ""; $("#preview").hidden = true;
   $("#ptitle").textContent = "Nuevo producto"; $("#cancelEdit").hidden = true;
-  camposSegunCategoria();
+  comboSel = {}; camposSegunCategoria();
 }
 $("#cancelEdit").onclick = resetForm;
 F().img.onchange = e => {
@@ -182,14 +245,23 @@ F().img.onchange = e => {
 $("#pform").onsubmit = async e => {
   e.preventDefault();
   const f = e.target.elements, id = f.pid.value, btn = $("#saveBtn"); btn.disabled = true;
-  const data = {
-    name: f.n.value.trim(), category: f.cat.value, price: parseFloat(f.price.value),
-    description: f.desc.value.trim(), badge: f.badge.value.trim(), soldOut: f.sold.checked, active: f.act.checked
+  const cat = f.cat.value;
+  let data = {
+    name: f.n.value.trim(), category: cat, price: parseFloat(f.price.value),
+    description: f.desc.value.trim(), badge: f.badge.value.trim(), soldOut: f.sold.checked, active: f.act.checked,
+    extras: f.extras.checked
   };
   try {
-    if (f.cat.value === BEBIDAS) { data.description = ""; data.badge = ""; data.image = ""; }
+    if (cat === ADIC) data = { name: data.name, category: cat, price: data.price };
+    else if (cat === BEBIDAS) Object.assign(data, { description: "", badge: "", image: "", extras: false });
     else if (f.img.files[0]) data.image = await toData(f.img.files[0]);
-    const col = COLLECTIONS[f.cat.value];
+    if (cat === COMBOS) {
+      data.items = Object.entries(comboSel).filter(([, q]) => q > 0).map(([pid, qty]) => {
+        const p = products.find(x => x.id === pid); return { id: pid, name: p?.name || "", qty };
+      }).filter(i => i.name);
+      if (!data.items.length) { alert("Agrega al menos un producto al combo."); btn.disabled = false; return; }
+    }
+    const col = CATS[cat];
     if (id) {
       const old = products.find(x => x.id === id);
       if (old.col === col) await updateDoc(doc(db, col, id), data);
@@ -198,7 +270,7 @@ $("#pform").onsubmit = async e => {
         await deleteDoc(doc(db, old.col, id));
       }
     } else await addDoc(collection(db, col), { image: "", ...data, createdAt: serverTimestamp() });
-    resetForm(); toast("Producto guardado: ya aparece en la tienda");
+    resetForm(); toast(cat === ADIC ? "Adicional guardado" : cat === COMBOS ? "Combo guardado: ya aparece en la tienda" : "Producto guardado: ya aparece en la tienda");
   } catch (err) { alert("No se pudo guardar: " + err.message); }
   btn.disabled = false;
 };
@@ -210,6 +282,8 @@ $("#plist").addEventListener("click", e => {
   if (b.dataset.a === "edit") {
     const f = F(); f.pid.value = p.id; f.n.value = p.name; f.cat.value = p.category; f.price.value = p.price;
     f.desc.value = p.description || ""; f.badge.value = p.badge || ""; f.sold.checked = !!p.soldOut; f.act.checked = p.active !== false;
+    f.extras.checked = !!p.extras;
+    comboSel = Object.fromEntries((p.items || []).map(i => [i.id, i.qty]));
     $("#preview").hidden = true;
     if (p.image) { $("#preview").src = p.image; $("#preview").hidden = false; }
     camposSegunCategoria();
