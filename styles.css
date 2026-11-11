@@ -4,7 +4,7 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink)}
 button,input,textarea{font:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-
+ 
 .top{display:flex;align-items:center;gap:32px;padding:22px max(24px,calc((100% - 1260px)/2));background:#fff;position:sticky;top:0;z-index:20}
 .logo img,.logo-fb{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#000;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:11px;font-weight:700}
 .search{flex:1;max-width:660px;display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--muted)}
@@ -12,14 +12,19 @@ button{cursor:pointer}
 .contact{margin-left:auto;color:var(--ink);text-decoration:none;font-size:14px;font-weight:500}
 .order-btn{display:flex;align-items:center;gap:10px;height:46px;padding:0 20px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-weight:500;font-size:14px}
 .badge{background:#fff;color:var(--ink);min-width:22px;height:22px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:700}
-
-.hero{background:var(--ink);color:#fff;text-align:center;padding:42px 20px 56px}
+ 
+/* Banner con foto del local. Ajusta --hero-blur (difuminado) y --hero-bright (brillo: 0 = negro, 1 = original) */
+.hero{--hero-blur:3px;--hero-bright:.42;position:relative;isolation:isolate;overflow:hidden;background:var(--ink);color:#fff;text-align:center;padding:42px 20px 56px}
+.hero::before{content:"";position:absolute;inset:-14px;z-index:-2;background:url(images/hero.jpg) center 55%/cover no-repeat;filter:blur(var(--hero-blur)) brightness(var(--hero-bright))}
+.hero::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(rgba(0,0,0,.25),rgba(0,0,0,.5))}
+.hero h1,.hero .sub{text-shadow:0 2px 18px rgba(0,0,0,.65)}
+.hero .eyebrow{color:#cfdcde}.hero .eyebrow i{background:#9fb2b5}
 .eyebrow{display:flex;justify-content:center;align-items:center;gap:16px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#9fb2b5}
 .eyebrow i{width:32px;height:1px;background:#6b7a7c}
 .hero h1{font-family:var(--serif);font-weight:500;font-size:clamp(34px,7.6vw,84px);letter-spacing:.01em;margin:24px 0 28px;line-height:1}
 .sub{font-size:13px}.sub b{margin:0 10px;color:#8a8a8a}
 .utensils{margin-top:34px;color:#bbb}
-
+ 
 main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
 .chips{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:44px}
 .chip{height:39px;padding:0 24px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:500}
@@ -28,7 +33,7 @@ main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
 .section-head small{font-size:10px;color:var(--muted);letter-spacing:.03em}
 .section-head h2{font-family:var(--serif);font-weight:500;font-size:38px;margin-top:4px}
 #count{font-size:12px;color:#8a5a3c}
-
+ 
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
 .card{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column}
 .img{position:relative;aspect-ratio:1/0.93;background:#161616 radial-gradient(circle at 50% 40%,#2a2a2a,#0b0b0b)}
@@ -46,9 +51,9 @@ main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
 .add:active{transform:scale(.96)}
 .add:disabled{background:#d8d4cc;color:#8a857c;cursor:not-allowed}
 .empty{text-align:center;color:var(--muted);padding:40px}
-
+ 
 .wa-float{position:fixed;right:40px;bottom:25px;width:56px;height:56px;border-radius:50%;background:var(--green);display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:15}
-
+ 
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30}
 .drawer{position:fixed;top:0;right:0;height:100%;width:min(420px,100%);background:#fff;z-index:40;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s ease}
 .drawer.open{transform:none}
@@ -66,10 +71,10 @@ main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
 .total{display:flex;justify-content:space-between;font-size:18px}
 .send{height:48px;border:0;border-radius:999px;background:var(--green);color:#fff;font-weight:700}
 .clear{border:0;background:none;color:var(--muted);font-size:13px;text-decoration:underline}
-
+ 
 .toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:50}
 .toast.show{opacity:1;transform:translate(-50%,0)}
-
+ 
 @media(max-width:760px){
   .top{flex-wrap:wrap;gap:12px;padding:14px 16px}
   .search{order:3;flex-basis:100%;max-width:none}
@@ -79,9 +84,9 @@ main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
   .section-head h2{font-size:30px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-
+ 
 .card{cursor:pointer}
-
+ 
 /* Ventana de detalle del producto */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:grid;place-items:center;padding:16px}
 .modal[hidden]{display:none}
@@ -97,7 +102,7 @@ main{max-width:1260px;margin:0 auto;padding:30px 24px 100px}
 .madd{height:48px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-weight:700}
 .madd:disabled{background:#d8d4cc;color:#8a857c;cursor:not-allowed}
 .mclose{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.92);font-size:16px;z-index:2}
-
+ 
 /* 4 columnas en computador, 2 en teléfono y tablet */
 @media(max-width:900px){
   main{padding:24px 14px 100px}
