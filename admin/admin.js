@@ -162,8 +162,8 @@ ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO
 /* ---------- Ticket para impresora térmica (tablet Android + app RawBT) ----------
    En Android, "Imprimir factura" manda el ticket directo a RawBT en formato ESC/POS:
    sin ventana de impresión y con el ancho exacto del rollo.
-   TICKET_COLS: 48 para rollo de 80 mm · 32 para rollo de 58 mm. */
-const TICKET_COLS = 48;
+   TICKET_COLS: 32 para rollo de 58 mm (impresora 602-R58D) · 48 para rollo de 80 mm. */
+const TICKET_COLS = 32;
 const ES_ANDROID = /Android/i.test(navigator.userAgent);
 const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A, "É": 0x90, "¿": 0xA8, "¡": 0xAD };
 function aBytes(str) {
@@ -203,7 +203,9 @@ function ticketBytes(o) {
   const negrita = on => cmd(ESC, 0x45, on ? 1 : 0);
   const tamaño = n => cmd(GS, 0x21, n);   // 0 normal · 0x01 doble alto · 0x11 doble alto y ancho
 
-  cmd(ESC, 0x40, ESC, 0x74, 0x00);       // reiniciar impresora · tabla de caracteres PC437 (acentos y ñ)
+  cmd(ESC, 0x40);                        // reiniciar impresora
+  cmd(0x1C, 0x2E);                       // apagar el modo de caracteres chinos (evita símbolos raros)
+  cmd(ESC, 0x74, 0x00);                  // tabla de caracteres PC437 (acentos y ñ)
   centro(true); negrita(true); tamaño(0x11); ln(SETTINGS.business); tamaño(0); negrita(false);
   ln("Tel: " + SETTINGS.phone);
   centro(false); sep();
@@ -228,8 +230,7 @@ function ticketBytes(o) {
   if (o.notes) { sep(); bloque("Notas: " + o.notes); }
   sep();
   centro(true); negrita(true); ln("PAGO CONFIRMADO"); negrita(false); ln("¡Gracias por tu compra!"); centro(false);
-  cmd(ESC, 0x64, 5);                     // avanzar papel
-  cmd(GS, 0x56, 0x42, 0x00);             // cortar (si la impresora tiene cortador)
+  cmd(ESC, 0x64, 4);                     // avanzar papel para poder arrancarlo (esta impresora no corta)
   return B;
 }
 function imprimirRawBT(o) {
