@@ -164,7 +164,10 @@ ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO
    sin ventana de impresión y con el ancho exacto del rollo.
    TICKET_COLS: 32 para rollo de 58 mm (impresora 602-R58D) · 48 para rollo de 80 mm. */
 const TICKET_COLS = 32;
-const ES_ANDROID = /Android/i.test(navigator.userAgent);
+// Las tablets abren Chrome en "modo escritorio" y se hacen pasar por PC; por eso se revisan varias señales.
+const ES_ANDROID = /Android/i.test(navigator.userAgent)
+  || navigator.userAgentData?.platform === "Android"
+  || (/Linux/i.test(navigator.platform || navigator.userAgent) && navigator.maxTouchPoints > 1);
 const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A, "É": 0x90, "¿": 0xA8, "¡": 0xAD };
 function aBytes(str) {
   const out = [];
@@ -173,7 +176,7 @@ function aBytes(str) {
     if (c >= 32 && c < 127) out.push(c);
     else if (CP437[ch]) out.push(CP437[ch]);
     else if (/\s/.test(ch)) out.push(32);
-    else for (const x of ch.normalize("NFD").replace(/[̀-ͯ]/g, "")) out.push(x.charCodeAt(0) < 127 ? x.charCodeAt(0) : 63);
+    else for (const x of ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) out.push(x.charCodeAt(0) < 127 ? x.charCodeAt(0) : 63);
   }
   return out;
 }
