@@ -53,7 +53,24 @@ main{max-width:1100px;margin:0 auto;padding:24px}
 .pill{font-size:11px;background:#eee;border-radius:999px;padding:2px 8px;margin-left:6px}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0b0b0b;color:#fff;padding:12px 20px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none}
 #toast.show{opacity:1}
-@media(max-width:700px){#pform{grid-template-columns:1fr}main{padding:14px}}
+/* Filtros de pedidos */
+.ofil{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ofil select,.ofil input{width:auto}
+.ofil input{min-width:170px}
+#osum{color:#555;font-size:13px;margin:-6px 0 14px}
+#osum:empty{display:none}
+/* Productos del combo */
+#comboBox{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#555}
+#comboPick{border:1px solid #ddd8cf;border-radius:8px;max-height:280px;overflow-y:auto;background:#fff}
+.cp{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid #f0ede7;color:#0b0b0b;font-size:14px}
+.cp:first-child{border-top:0}
+.cp.on{background:#f7f5f0}
+.cp small{display:block;color:#888;font-size:12px}
+.cpq{display:flex;align-items:center;gap:8px;flex:none}
+.cpq button{width:28px;height:28px;border-radius:50%;border:1px solid #ddd8cf;background:#fff;font-size:15px;line-height:1;padding:0}
+.cpq button.plus{background:#0b0b0b;color:#fff;border-color:#0b0b0b}
+#comboSum{color:#555}
+@media(max-width:700px){#pform{grid-template-columns:1fr}main{padding:14px}.ofil,.ofil select,.ofil input{width:100%}}
 </style>
 </head>
 <body>
@@ -82,9 +99,14 @@ main{max-width:1100px;margin:0 auto;padding:24px}
   <main>
     <p id="banner" hidden></p>
     <section id="orders">
-      <div class="bar"><h2>Pedidos</h2>
+      <div class="bar" style="flex-wrap:wrap"><h2>Pedidos</h2>
+        <div class="ofil">
+        <input id="q" type="search" inputmode="numeric" placeholder="Buscar # de pedido">
+        <select id="range"><option value="hoy">Hoy</option><option value="ayer">Ayer</option><option value="semana">Esta semana</option><option value="mes">Este mes</option><option value="">Todos</option></select>
         <select id="filter"><option value="">Todos</option><option value="nuevo">Pendientes de pago</option><option value="confirmado">Confirmados</option><option value="entregado">Entregados</option><option value="cancelado">Cancelados</option></select>
+        </div>
       </div>
+      <p id="osum"></p>
       <div id="ordersList"></div>
     </section>
     <section id="products" hidden>
@@ -99,6 +121,11 @@ main{max-width:1100px;margin:0 auto;padding:24px}
         <label class="full">Foto<input name="img" type="file" accept="image/*"><img id="preview" hidden alt=""></label>
         <label class="chk"><input type="checkbox" name="sold"> Agotado</label>
         <label class="chk"><input type="checkbox" name="act" checked> Visible en la tienda</label>
+        <label class="chk"><input type="checkbox" name="extras"> Permite adicionales (al pedirlo, se le ofrecen al cliente)</label>
+        <div class="full" id="comboBox" hidden>Productos que incluye el combo
+          <div id="comboPick"></div>
+          <small id="comboSum"></small>
+        </div>
         <div class="full"><button class="btn" id="saveBtn">Guardar producto</button> <button type="button" class="btn ghost" id="cancelEdit" hidden>Cancelar edición</button></div>
       </form>
       <div id="plist"></div>
