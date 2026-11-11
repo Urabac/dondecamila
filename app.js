@@ -5,7 +5,10 @@ import { escucharTasa, formatoBs, aBolivares } from "./tasa.js";
 const $ = s => document.querySelector(s);
 const { whatsapp, currency, business } = SETTINGS;
 const money = n => currency + Number(n).toFixed(2);
-let PRODUCTS = [], category = "Todos", term = "", cart = {};
+let PRODUCTS = [], ADDONS = [], category = "Todos", term = "", cart = {};
+
+const BEBIDAS = "Bebidas", COMBOS = "Combos";
+const ADICIONALES = "adicionales";            // colección de adicionales (no se muestran como productos)
 
 /* Tasa en bolívares: la que aplicas desde el panel. Bs. = $ × tasa */
 let TASA = 0;
@@ -14,6 +17,14 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .price-bs{display:flex;flex-direction:column;line-height:1.15}
   .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
   #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
+
+  /* Títulos de sección dentro del menú (Combos / Menú) */
+  .sec-t{grid-column:1/-1;font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:10px 0 -4px}
+  .sec-t:first-child{margin-top:0}
+  .card.combo .incl{font-size:13px;line-height:1.35;margin:-2px 0 6px;opacity:.85}
+  .card.combo .incl b{font-weight:600}
+  .save{display:inline-block;font-size:11px;font-weight:600;color:#1a7f37;background:#dff5e3;border-radius:999px;padding:2px 8px;margin-top:4px;width:max-content}
+
   .drinks{box-sizing:border-box;grid-column:1/-1;width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:6px 22px 8px}
   .drinks-t{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:14px 0 4px}
   .drink-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;padding:14px 0;border-top:1px solid rgba(0,0,0,.07)}
@@ -25,7 +36,6 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .drink-row .dp small{font-size:12px;opacity:.6}
   .drink-row .add{width:auto!important;min-width:0;flex:none;margin:0!important;padding-left:22px;padding-right:22px;white-space:nowrap}
   .drink-row.sold .dn b,.drink-row.sold .dp{opacity:.45}
-  /* Teléfono: nombre arriba; precio y botón abajo */
   @media (max-width:560px){
     .drinks{padding:4px 14px 6px}
     .drink-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px;column-gap:12px}
@@ -53,12 +63,39 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .up-q button{width:30px;height:30px;border-radius:50%;border:1px solid rgba(0,0,0,.2);background:#fff;color:#0b0b0b;font-size:16px;line-height:1;cursor:pointer}
   .up-q button.plus{background:#0b0b0b;color:#fff;border-color:#0b0b0b}
   .up-q span{min-width:16px;text-align:center;font-weight:600}
+
+  /* Detalle de cada línea del carrito (adicionales / contenido del combo) */
+  .line .det{display:block;font-size:12px;opacity:.65;margin-top:1px}
+
+  /* Hoja de adicionales */
+  #addonSheet{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45);padding:0}
+  #addonSheet[hidden]{display:none}
+  #addonSheet *{box-sizing:border-box}
+  .as-box{width:min(460px,100%);max-height:88vh;display:flex;flex-direction:column;background:#fff;color:#0b0b0b;
+    border-radius:20px 20px 0 0;animation:asIn .22s ease;font-family:inherit}
+  @keyframes asIn{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+  @media (min-width:600px){#addonSheet{align-items:center;padding:20px}.as-box{border-radius:20px}}
+  .as-head{padding:20px 20px 10px}
+  .as-head small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55}
+  .as-head h3{font-size:19px;margin:4px 0 0;line-height:1.2}
+  .as-head p{font-size:13px;opacity:.65;margin:4px 0 0}
+  .as-list{overflow-y:auto;padding:0 20px}
+  .as-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid rgba(0,0,0,.08);cursor:pointer}
+  .as-row input{width:20px;height:20px;accent-color:#0b0b0b;flex:none;margin:0}
+  .as-row .an{flex:1;min-width:0;font-weight:500;overflow-wrap:anywhere}
+  .as-row .ap{text-align:right;white-space:nowrap;font-size:14px;font-weight:600}
+  .as-row .ap small{display:block;font-size:11px;font-weight:400;opacity:.6}
+  .as-foot{padding:14px 20px 20px;border-top:1px solid rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+  .as-foot button{border-radius:999px;padding:13px 14px;font:inherit;font-weight:600;cursor:pointer}
+  .as-skip{background:#fff;border:1px solid rgba(0,0,0,.2);color:#0b0b0b}
+  .as-ok{background:#0b0b0b;border:0;color:#fff}
+  .as-ok small{display:block;font-size:11px;font-weight:400;opacity:.75}
 </style>`);
-const BEBIDAS = "Bebidas";
 escucharTasa(v => {
   TASA = v;
   renderGrid(); renderCart();
   if (openId && !$("#modal").hidden) $("#mPrice").innerHTML = precioModal(PRODUCTS.find(x => x.id === openId));
+  if (!$("#addonSheet").hidden) pintarSheet();
 });
 
 try { cart = JSON.parse(localStorage.getItem("dc-cart")) || {}; } catch (e) {}
@@ -79,6 +116,22 @@ LABELS.forEach(label => {
     $("#empty").hidden = false; $("#empty").textContent = "No se pudo cargar el menú. Intenta de nuevo en unos minutos.";
   });
 });
+/* Adicionales (papas extra, queso extra…): solo se ofrecen al pedir productos que los permiten */
+onSnapshot(collection(db, ADICIONALES), snap => {
+  ADDONS = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  renderCart();
+}, err => console.warn("Adicionales no disponibles:", err));
+
+/* ---------- Combos ---------- */
+const incluye = p => (p.items || []).map(i => `${i.qty} ${i.name}`).join(", ");
+function ahorro(p) {
+  const separado = (p.items || []).reduce((s, i) => {
+    const x = PRODUCTS.find(y => y.id === i.id);
+    return s + (x ? Number(x.price) * i.qty : 0);
+  }, 0);
+  return separado > p.price ? separado - p.price : 0;
+}
+const comboTieneBebida = p => (p.items || []).some(i => PRODUCTS.find(y => y.id === i.id)?.category === BEBIDAS);
 
 function renderChips() {
   const cats = ["Todos", ...LABELS.filter(l => PRODUCTS.some(p => p.category === l))];
@@ -91,17 +144,10 @@ $("#chips").addEventListener("click", e => {
 });
 $("#search").addEventListener("input", e => { term = e.target.value.trim().toLowerCase(); renderGrid(); });
 
-function renderGrid() {
-  const list = PRODUCTS.filter(p =>
-    (category === "Todos" || p.category === category) &&
-    [p.name, p.category, p.description].join(" ").toLowerCase().includes(term));
-  $("#count").textContent = `${list.length} producto${list.length === 1 ? "" : "s"}`;
-  $("#empty").hidden = list.length > 0;
-  $("#empty").textContent = PRODUCTS.length ? "No encontramos productos con esa búsqueda." : "Pronto tendremos productos disponibles.";
-  const comidas = list.filter(p => p.category !== BEBIDAS);
-  const bebidas = list.filter(p => p.category === BEBIDAS);
-  $("#grid").innerHTML = comidas.map(p => `
-    <article class="card${p.soldOut ? " sold" : ""}" data-id="${p.id}" tabindex="0">
+const tarjeta = p => {
+  const esCombo = p.category === COMBOS, ah = esCombo ? ahorro(p) : 0;
+  return `
+    <article class="card${p.soldOut ? " sold" : ""}${esCombo ? " combo" : ""}" data-id="${p.id}" tabindex="0">
       <div class="img">
         ${p.image ? `<img src="${p.image}" alt="${p.name}" loading="lazy">` : ""}
         ${p.soldOut ? '<span class="tag dark">Agotado</span>' : p.badge ? `<span class="tag">${p.badge}</span>` : ""}
@@ -109,12 +155,30 @@ function renderGrid() {
       <div class="info">
         <small>${p.category || ""}</small>
         <h4>${p.name}</h4>
+        ${esCombo && p.items?.length ? `<p class="incl"><b>Incluye:</b> ${incluye(p)}</p>` : ""}
         <p>${p.description || ""}</p>
-        <div class="row"><span class="price-bs"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}</span>
+        <div class="row"><span class="price-bs"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}${ah ? `<span class="save">Ahorras ${money(ah)}</span>` : ""}</span>
           <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
         </div>
       </div>
-    </article>`).join("") + (bebidas.length ? `
+    </article>`;
+};
+
+function renderGrid() {
+  const list = PRODUCTS.filter(p =>
+    (category === "Todos" || p.category === category) &&
+    [p.name, p.category, p.description, incluye(p)].join(" ").toLowerCase().includes(term));
+  $("#count").textContent = `${list.length} producto${list.length === 1 ? "" : "s"}`;
+  $("#empty").hidden = list.length > 0;
+  $("#empty").textContent = PRODUCTS.length ? "No encontramos productos con esa búsqueda." : "Pronto tendremos productos disponibles.";
+  const combos = list.filter(p => p.category === COMBOS);
+  const comidas = list.filter(p => p.category !== BEBIDAS && p.category !== COMBOS);
+  const bebidas = list.filter(p => p.category === BEBIDAS);
+  const conTitulos = combos.length && comidas.length;   // títulos solo si hay combos y menú a la vez
+  $("#grid").innerHTML =
+    (combos.length ? (conTitulos ? '<h3 class="sec-t">Combos</h3>' : "") + combos.map(tarjeta).join("") : "") +
+    (comidas.length ? (conTitulos ? '<h3 class="sec-t">Menú</h3>' : "") + comidas.map(tarjeta).join("") : "") +
+    (bebidas.length ? `
     <section class="drinks">
       <h3 class="drinks-t">Bebidas</h3>
       ${bebidas.map(p => `
@@ -125,12 +189,17 @@ function renderGrid() {
       </div>`).join("")}
     </section>` : "");
 }
+
+/* Agregar: si el producto permite adicionales, primero se le preguntan */
+const permiteAdicionales = p => p && p.extras && ADDONS.length > 0;
+function agregar(id, qty) {
+  const p = PRODUCTS.find(x => x.id === id); if (!p || p.soldOut) return;
+  if (permiteAdicionales(p)) return abrirSheet(p, qty);
+  cart[id] = (cart[id] || 0) + qty; save(); renderCart(); toast("Agregado al pedido");
+}
 $("#grid").addEventListener("click", e => {
   const b = e.target.closest(".add");
-  if (b) {
-    if (!b.disabled) { cart[b.dataset.id] = (cart[b.dataset.id] || 0) + 1; save(); renderCart(); toast("Agregado al pedido"); }
-    return;
-  }
+  if (b) { if (!b.disabled) agregar(b.dataset.id, 1); return; }
   const c = e.target.closest(".card"); if (c) openModal(c.dataset.id);
 });
 $("#grid").addEventListener("keydown", e => {
@@ -146,7 +215,8 @@ function openModal(id) {
   $("#mImg img") && ($("#mImg img").alt = p.name);
   $("#mCat").textContent = p.category || "";
   $("#mName").textContent = p.name;
-  $("#mDesc").textContent = p.description || "Sin descripción.";
+  const inc = p.category === COMBOS && p.items?.length ? "Incluye: " + incluye(p) + ". " : "";
+  $("#mDesc").textContent = (inc + (p.description || "")).trim() || "Sin descripción.";
   $("#mPrice").innerHTML = precioModal(p);
   $("#mQty").textContent = 1;
   $("#mAdd").disabled = !!p.soldOut;
@@ -164,28 +234,75 @@ $("#mMinus").onclick = () => { mQty = Math.max(1, mQty - 1); $("#mQty").textCont
 $("#mPlus").onclick = () => { mQty = Math.min(20, mQty + 1); $("#mQty").textContent = mQty; };
 $("#mAdd").onclick = () => {
   if (!openId) return;
-  cart[openId] = (cart[openId] || 0) + mQty; save(); renderCart(); closeModal(); toast("Agregado al pedido");
+  const id = openId, q = mQty; closeModal(); agregar(id, q);
 };
-document.addEventListener("keydown", e => e.key === "Escape" && closeModal());
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); cerrarSheet(); } });
 
-/* Carrito */
-const cartItems = () => Object.entries(cart)
-  .map(([id, q]) => ({ p: PRODUCTS.find(x => x.id === id), q }))
-  .filter(i => i.p && !i.p.soldOut);
+/* ---------- Hoja "¿Quieres adicionales?" ---------- */
+document.body.insertAdjacentHTML("beforeend", '<div id="addonSheet" hidden role="dialog" aria-modal="true"></div>');
+let sheet = null;   // { p, qty, sel:Set }
+function abrirSheet(p, qty) { sheet = { p, qty, sel: new Set() }; pintarSheet(); $("#addonSheet").hidden = false; document.body.style.overflow = "hidden"; }
+function cerrarSheet() { if (!sheet) return; sheet = null; $("#addonSheet").hidden = true; document.body.style.overflow = ""; }
+function pintarSheet() {
+  if (!sheet) return;
+  const { p, qty, sel } = sheet;
+  const extra = ADDONS.filter(a => sel.has(a.id)).reduce((s, a) => s + Number(a.price), 0);
+  const unit = Number(p.price) + extra;
+  $("#addonSheet").innerHTML = `
+    <div class="as-box">
+      <div class="as-head"><small>Adicionales</small><h3>¿Le agregas algo a tu ${p.name}?</h3>
+        <p>${qty > 1 ? `Se aplica a las ${qty} unidades. ` : ""}Elige los que quieras o continúa sin adicionales.</p></div>
+      <div class="as-list">${ADDONS.map(a => `
+        <label class="as-row"><input type="checkbox" data-ad="${a.id}" ${sel.has(a.id) ? "checked" : ""}>
+          <span class="an">${a.name}</span>
+          <span class="ap">+${money(a.price)}${TASA ? `<small>${bs(a.price)}</small>` : ""}</span></label>`).join("")}
+      </div>
+      <div class="as-foot">
+        <button type="button" class="as-skip" data-as="skip">Sin adicionales</button>
+        <button type="button" class="as-ok" data-as="ok">Agregar · ${money(unit * qty)}${TASA ? `<small>${bs(unit * qty)}</small>` : ""}</button>
+      </div>
+    </div>`;
+}
+$("#addonSheet").addEventListener("change", e => {
+  const id = e.target.dataset.ad; if (!id || !sheet) return;
+  e.target.checked ? sheet.sel.add(id) : sheet.sel.delete(id); pintarSheet();
+});
+$("#addonSheet").addEventListener("click", e => {
+  if (e.target.id === "addonSheet") return cerrarSheet();
+  const a = e.target.closest("[data-as]")?.dataset.as; if (!a || !sheet) return;
+  const { p, qty, sel } = sheet;
+  const key = a === "ok" && sel.size ? p.id + "~" + [...sel].sort().join(".") : p.id;
+  cart[key] = (cart[key] || 0) + qty; save(); renderCart(); cerrarSheet(); toast("Agregado al pedido");
+});
+
+/* ---------- Carrito ----------
+   Cada línea se guarda con una clave: "idProducto" o "idProducto~idAdicional.idAdicional" */
+function lineaDe(key, q) {
+  const [pid, ads = ""] = key.split("~");
+  const p = PRODUCTS.find(x => x.id === pid);
+  if (!p || p.soldOut) return null;
+  const extras = ads ? ads.split(".").map(id => ADDONS.find(a => a.id === id)).filter(Boolean) : [];
+  if (ads && ADDONS.length && extras.length !== ads.split(".").length) return null;   // un adicional ya no existe
+  const price = Number(p.price) + extras.reduce((s, a) => s + Number(a.price), 0);
+  const name = p.name + (extras.length ? " + " + extras.map(a => a.name).join(" + ") : "");
+  const detail = p.category === COMBOS && p.items?.length ? "Incluye: " + incluye(p) : "";
+  return { key, p, q, price, name, detail };
+}
+const cartItems = () => Object.entries(cart).map(([k, q]) => lineaDe(k, q)).filter(Boolean);
 
 function renderCart() {
   const items = cartItems();
   const count = items.reduce((s, i) => s + i.q, 0);
-  const total = items.reduce((s, i) => s + i.q * i.p.price, 0);
+  const total = items.reduce((s, i) => s + i.q * i.price, 0);
   $("#cartCount").textContent = count;
   $("#total").textContent = money(total);
   if (!$("#totalBs")) { const s = document.createElement("small"); s.id = "totalBs"; $("#total").after(s); }
   $("#totalBs").textContent = TASA && total ? bs(total) : "";
   $("#checkout").style.display = count ? "" : "none";
-  $("#cartItems").innerHTML = count ? items.map(({ p, q }) => `
+  $("#cartItems").innerHTML = count ? items.map(i => `
     <div class="line">
-      <div><b>${p.name}</b><small>${money(p.price)} c/u${TASA ? " · " + bs(p.price) : ""}</small></div>
-      <div class="qty"><button data-a="-" data-id="${p.id}">−</button><span>${q}</span><button data-a="+" data-id="${p.id}">+</button></div>
+      <div><b>${i.name}</b>${i.detail ? `<span class="det">${i.detail}</span>` : ""}<small>${money(i.price)} c/u${TASA ? " · " + bs(i.price) : ""}</small></div>
+      <div class="qty"><button data-a="-" data-id="${i.key}">−</button><span>${i.q}</span><button data-a="+" data-id="${i.key}">+</button></div>
     </div>`).join("") : '<p class="empty-cart">Tu pedido está vacío. Agrega algo del menú.</p>';
   renderUpsell(items);
 }
@@ -197,7 +314,7 @@ function renderUpsell(items) {
   const box = $("#drinkUpsell");
   const disponibles = PRODUCTS.filter(p => p.category === BEBIDAS && !p.soldOut);
   const tieneComida = items.some(i => i.p.category !== BEBIDAS);
-  const tieneBebida = items.some(i => i.p.category === BEBIDAS);
+  const tieneBebida = items.some(i => i.p.category === BEBIDAS || comboTieneBebida(i.p));
   if (!items.length || !disponibles.length || !tieneComida) upsellOpen = false;
   if (!items.length || !disponibles.length || !tieneComida || (tieneBebida && !upsellOpen)) { box.innerHTML = ""; return; }
 
@@ -231,8 +348,40 @@ $("#cartItems").addEventListener("click", e => {
   if (cart[id] <= 0) delete cart[id];
   save(); renderCart();
 });
-document.querySelectorAll('input[name="mode"]').forEach(r => r.onchange = () => {
-  const d = document.querySelector('input[name="mode"]:checked').value === "delivery";
+
+/* ---------- Tipo de pedido: Delivery / Retiro / Comer aquí ----------
+   "Comer aquí" se crea copiando la opción de Retiro, así hereda tu mismo diseño. */
+const TIPOS = { delivery: "Delivery", retiro: "Retiro en local", comer: "Comer aquí" };
+(function agregarComerAqui() {
+  if (document.querySelector('input[name="mode"][value="comer"]')) return;
+  const radios = [...document.querySelectorAll('input[name="mode"]')];
+  const base = radios.find(r => r.value !== "delivery") || radios[radios.length - 1];
+  if (!base) return;
+  const label = base.closest("label");
+  let nuevo;
+  if (label) {
+    nuevo = label.cloneNode(true);
+    const walker = document.createTreeWalker(nuevo, NodeFilter.SHOW_TEXT);
+    let cambiado = false, t;
+    while ((t = walker.nextNode())) {
+      if (t.nodeValue.trim()) {
+        if (!cambiado) { t.nodeValue = t.nodeValue.replace(/\S.*\S|\S/s, "Comer aquí"); cambiado = true; }
+        else t.nodeValue = "";
+      }
+    }
+    if (!cambiado) nuevo.append(" Comer aquí");
+    label.after(nuevo);
+  } else {
+    nuevo = document.createElement("label");
+    nuevo.innerHTML = '<input type="radio" name="mode"> Comer aquí';
+    base.parentElement.after(nuevo);
+  }
+  const input = nuevo.querySelector('input[name="mode"]');
+  input.value = "comer"; input.checked = false; input.removeAttribute("id");
+})();
+document.addEventListener("change", e => {
+  if (e.target.name !== "mode") return;
+  const d = e.target.value === "delivery";
   $("#address").hidden = !d; $("#address").required = d;
 });
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
@@ -251,24 +400,25 @@ $("#checkout").addEventListener("submit", async e => {
   e.preventDefault();
   const items = cartItems(); if (!items.length) return;
   const f = new FormData(e.target);
-  const mode = f.get("mode") === "delivery" ? "delivery" : "retiro";
-  const total = items.reduce((s, i) => s + i.q * i.p.price, 0);
+  const m = f.get("mode");
+  const mode = m === "delivery" ? "delivery" : m === "comer" ? "comer" : "retiro";
+  const total = items.reduce((s, i) => s + i.q * i.price, 0);
   const number = String(Date.now()).slice(-6);
   const order = {
     number, status: "nuevo", total, delivery: mode,
     tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
     customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
     notes: f.get("notes") || "",
-    items: items.map(i => ({ id: i.p.id, name: i.p.name, price: i.p.price, qty: i.q })),
+    items: items.map(i => ({ id: i.key, name: i.name, price: i.price, qty: i.q, ...(i.detail ? { detail: i.detail } : {}) })),
     createdAt: serverTimestamp()
   };
   const msg = [
     `*Nuevo pedido #${number} - ${business}*`, "",
-    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}`),
+    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}${i.detail ? `\n   (${i.detail})` : ""}`),
     `*Total: ${money(total)}*`,
     ...(TASA ? [`*Total en bolívares: ${bs(total)}*`] : []), "",
     `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
-    `Tipo: ${mode === "delivery" ? "Delivery" : "Retiro en local"}`,
+    `Tipo: ${TIPOS[mode]}`,
     ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
     order.notes ? `Notas: ${order.notes}` : ""
   ].join("\n");
