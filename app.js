@@ -18,6 +18,18 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
   #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
 
+  /* Categorías en el teléfono: una sola línea que se desliza, botones más pequeños */
+  @media (max-width:700px){
+    #chips{display:flex!important;flex-wrap:nowrap!important;justify-content:flex-start!important;gap:8px!important;
+      overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;padding:2px 0!important;margin-left:0!important;margin-right:0!important;max-width:100%;
+      -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+              mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+    #chips::-webkit-scrollbar{display:none}
+    #chips .chip{flex:none!important;font-size:13px!important;padding:7px 14px!important;min-height:0!important;
+      line-height:1.2!important;white-space:nowrap;scroll-snap-align:start;margin:0!important}
+  }
+
   /* Títulos de sección dentro del menú (Combos / Menú) */
   .sec-t{grid-column:1/-1;font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:10px 0 -4px}
   .sec-t:first-child{margin-top:0}
@@ -141,6 +153,8 @@ function renderChips() {
 $("#chips").addEventListener("click", e => {
   const b = e.target.closest(".chip"); if (!b) return;
   category = b.dataset.c; renderChips(); renderGrid();
+  // en el teléfono, deja visible la categoría elegida dentro de la línea
+  $(`#chips .chip[data-c="${CSS.escape(category)}"]`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
 });
 $("#search").addEventListener("input", e => { term = e.target.value.trim().toLowerCase(); renderGrid(); });
 
