@@ -117,7 +117,7 @@ function renderOrders() {
       <div class="f"><strong>Total ${money(o.total)}${bsPedido(o, o.total)}${o.tasa ? `<small style="font-weight:400;color:#777"> (tasa ${formatoBs(o.tasa)})</small>` : ""}</strong><span>
         ${o.status === "nuevo" ? `<button class="btn" data-a="confirm" data-id="${o.id}">Confirmar pedido (pago recibido)</button>` : ""}
         ${o.status === "confirmado" ? `<button class="btn ghost" data-a="done" data-id="${o.id}">Marcar entregado</button>` : ""}
-        ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">${ES_ANDROID ? "🖨️ Imprimir ticket" : "Imprimir factura"}</button>` : ""}
+        ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">${EN_APP || ES_ANDROID ? "🖨️ Imprimir ticket" : "Imprimir factura"}</button>` : ""}
         <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(o.customer?.phone)}">WhatsApp</a>
         ${o.status === "nuevo" ? `<button class="btn red" data-a="cancel" data-id="${o.id}">Cancelar</button>` : ""}
         <button class="btn red" data-a="del" data-id="${o.id}">Eliminar</button></span></div>
@@ -133,7 +133,7 @@ $("#ordersList").addEventListener("click", e => {
   if (a === "confirm" && confirm(`¿Confirmar que el pedido #${o.number} fue pagado?`)) setStatus(o.id, "confirmado", { confirmedAt: serverTimestamp() });
   if (a === "done") setStatus(o.id, "entregado");
   if (a === "cancel" && confirm(`¿Cancelar el pedido #${o.number}?`)) setStatus(o.id, "cancelado");
-  if (a === "print") ES_ANDROID ? imprimirRawBT(o) : printInvoice(o);
+  if (a === "print") EN_APP ? imprimirApp(o) : ES_ANDROID ? imprimirRawBT(o) : printInvoice(o);
   if (a === "del" && confirm(`¿Eliminar el pedido #${o.number}? No se puede deshacer.`)) deleteDoc(doc(db, ORDERS, o.id)).catch(x => toast(x.message));
 });
 
@@ -165,10 +165,14 @@ ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO
    TICKET_COLS: 32 para rollo de 58 mm (impresora 602-R58D) · 48 para rollo de 80 mm. */
 const TICKET_COLS = 32;
 // Las tablets abren Chrome en "modo escritorio" y se hacen pasar por PC; por eso se revisan varias señales.
+// Dentro de la app "Panel Dondecamila": imprime directo por Bluetooth, en texto (como Zobaze)
+const EN_APP = typeof window.DCPrinter !== "undefined";
 const ES_ANDROID = /Android/i.test(navigator.userAgent)
   || navigator.userAgentData?.platform === "Android"
   || (/Linux/i.test(navigator.platform || navigator.userAgent) && navigator.maxTouchPoints > 1);
-const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A, "É": 0x90, "¿": 0xA8, "¡": 0xAD };
+// Tabla PC850: la que usa la impresora 602-R58D por defecto (se vio en el ticket de Zobaze)
+const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A,
+  "Á": 0xB5, "É": 0x90, "Í": 0xD6, "Ó": 0xE0, "Ú": 0xE9, "¿": 0xA8, "¡": 0xAD, "°": 0xF8 };
 function aBytes(str) {
   const out = [];
   for (const ch of String(str ?? "")) {
@@ -206,9 +210,7 @@ function ticketBytes(o) {
   const negrita = on => cmd(ESC, 0x45, on ? 1 : 0);
   const tamaño = n => cmd(GS, 0x21, n);   // 0 normal · 0x01 doble alto · 0x11 doble alto y ancho
 
-  cmd(ESC, 0x40);                        // reiniciar impresora
-  cmd(0x1C, 0x2E);                       // apagar el modo de caracteres chinos (evita símbolos raros)
-  cmd(ESC, 0x74, 0x00);                  // tabla de caracteres PC437 (acentos y ñ)
+  cmd(ESC, 0x40);                        // reiniciar impresora (queda en su tabla PC850: acentos y ñ)
   centro(true); negrita(true); tamaño(0x11); ln(SETTINGS.business); tamaño(0); negrita(false);
   ln("Tel: " + SETTINGS.phone);
   centro(false); sep();
@@ -274,6 +276,22 @@ function ticketTexto(o) {
   ln(""); ln(""); ln("");
   return L.join("\n");
 }
+/* En la app: el ticket con comandos de impresora (negritas, letra grande, acentos y ñ) va directo por Bluetooth */
+function imprimirApp(o) {
+  const bytes = ticketBytes(o);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 4096) bin += String.fromCharCode(...bytes.slice(i, i + 4096));
+  window.DCPrinter.imprimir(btoa(bin));
+}
+// Botón para cambiar de impresora (solo dentro de la app)
+if (EN_APP) {
+  const b = document.createElement("button");
+  b.className = "btn ghost"; b.type = "button"; b.textContent = "🖨️ Impresora";
+  b.title = "Elegir o cambiar la impresora Bluetooth";
+  b.onclick = () => window.DCPrinter.elegir();
+  $("#logout").before(b);
+}
+
 function imprimirRawBT(o) {
   // Si RawBT no está instalado, Android abre la Play Store para instalarlo
   location.href = "intent:" + encodeURIComponent(ticketTexto(o)) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
