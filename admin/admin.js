@@ -117,7 +117,7 @@ function renderOrders() {
       <div class="f"><strong>Total ${money(o.total)}${bsPedido(o, o.total)}${o.tasa ? `<small style="font-weight:400;color:#777"> (tasa ${formatoBs(o.tasa)})</small>` : ""}</strong><span>
         ${o.status === "nuevo" ? `<button class="btn" data-a="confirm" data-id="${o.id}">Confirmar pedido (pago recibido)</button>` : ""}
         ${o.status === "confirmado" ? `<button class="btn ghost" data-a="done" data-id="${o.id}">Marcar entregado</button>` : ""}
-        ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">Imprimir factura</button>` : ""}
+        ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">${ES_ANDROID ? "🖨️ Imprimir ticket" : "Imprimir factura"}</button>` : ""}
         <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(o.customer?.phone)}">WhatsApp</a>
         ${o.status === "nuevo" ? `<button class="btn red" data-a="cancel" data-id="${o.id}">Cancelar</button>` : ""}
         <button class="btn red" data-a="del" data-id="${o.id}">Eliminar</button></span></div>
@@ -236,12 +236,47 @@ function ticketBytes(o) {
   cmd(ESC, 0x64, 4);                     // avanzar papel para poder arrancarlo (esta impresora no corta)
   return B;
 }
+/* Ticket en TEXTO SIMPLE: el mismo camino que usa la prueba de texto de RawBT.
+   Sin comandos especiales ni imágenes, así funciona en cualquier impresora térmica.
+   Las tildes y la ñ se quitan (Peña → Pena) porque esta impresora no las imprime bien. */
+const sinAcentos = t => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
+function ticketTexto(o) {
+  const W = TICKET_COLS, L = [];
+  const ln = (s = "") => L.push(sinAcentos(s));
+  const sep = () => ln("-".repeat(W));
+  const centro = s => { s = sinAcentos(s); ln(" ".repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s); };
+  const fila = (izq, der) => partir(sinAcentos(izq), W - der.length - 1).forEach((p, i) => ln(i === 0 ? p.padEnd(W - der.length) + der : p));
+  const bloque = (texto, sangria = "") => partir(sinAcentos(texto), W - sangria.length).forEach(l => ln(sangria + l));
+
+  centro(String(SETTINGS.business).toUpperCase());
+  centro("Tel: " + SETTINGS.phone);
+  sep();
+  ln("FACTURA #" + o.number);
+  ln("Fecha: " + fdate(o));
+  bloque("Cliente: " + (o.customer?.name || ""));
+  ln("Tel: " + (o.customer?.phone || ""));
+  ln("Tipo: " + kind(o));
+  if (o.delivery === "delivery") bloque("Direccion: " + (o.customer?.address || ""));
+  sep();
+  (o.items || []).forEach(i => {
+    fila(`${i.qty} x ${i.name}`, money(i.qty * i.price));
+    if (i.detail) bloque("(" + i.detail + ")", "   ");
+    if (i.qty > 1) ln("   " + money(i.price) + " c/u");
+  });
+  sep();
+  fila("TOTAL", money(o.total));
+  if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
+  if (o.tasa) fila("Tasa", formatoBs(o.tasa));
+  if (o.notes) { sep(); bloque("Notas: " + o.notes); }
+  sep();
+  centro("PAGO CONFIRMADO");
+  centro("Gracias por tu compra!");
+  ln(""); ln(""); ln("");
+  return L.join("\n");
+}
 function imprimirRawBT(o) {
-  const bytes = ticketBytes(o);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 4096) bin += String.fromCharCode(...bytes.slice(i, i + 4096));
   // Si RawBT no está instalado, Android abre la Play Store para instalarlo
-  location.href = "intent:base64," + btoa(bin) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
+  location.href = "intent:" + encodeURIComponent(ticketTexto(o)) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
 }
 
 /* ---------- Subir producto ---------- */
