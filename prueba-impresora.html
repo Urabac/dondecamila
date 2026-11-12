@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Prueba de impresora</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,sans-serif;background:#f4f2ee;color:#0b0b0b;margin:0;padding:20px;max-width:560px;margin:auto}
+  h1{font-size:22px;margin:0 0 6px}
+  p{line-height:1.45;margin:0 0 12px}
+  .info{background:#fff;border:1px solid #e6e2db;border-radius:10px;padding:12px;font:13px/1.4 monospace;word-break:break-all;margin-bottom:18px}
+  .ok{color:#1a7f37;font-weight:700}.no{color:#b3261e;font-weight:700}
+  button{display:block;width:100%;text-align:left;background:#0b0b0b;color:#fff;border:0;border-radius:12px;padding:16px;margin:0 0 10px;font:inherit;font-size:16px;font-weight:600;cursor:pointer}
+  button small{display:block;font-weight:400;opacity:.75;font-size:13px;margin-top:3px}
+</style>
+</head>
+<body>
+<h1>Prueba de impresora</h1>
+<p>Toca cada botón <b>uno por uno</b>. Cada uno imprime un papelito con su letra (A, B, C, D). Después dime <b>qué letras salieron bien y cuáles salieron como rayas</b>.</p>
+
+<div class="info" id="info"></div>
+
+<button data-p="A">A · Texto simple<small>El camino que usa ahora el panel</small></button>
+<button data-p="B">B · Texto con salto de línea clásico<small>Igual que A, con otro tipo de salto de línea</small></button>
+<button data-p="C">C · Comandos de impresora (ESC/POS)<small>El camino que usaba el panel antes</small></button>
+<button data-p="D">D · Ventana de impresión de Android<small>Como imprimir una página normal</small></button>
+
+<script>
+const ua = navigator.userAgent;
+const android = /Android/i.test(ua) || navigator.userAgentData?.platform === "Android"
+  || (/Linux/i.test(navigator.platform || ua) && navigator.maxTouchPoints > 1);
+document.getElementById("info").innerHTML =
+  "Detectado como tablet/Android: " + (android ? '<span class="ok">SÍ</span>' : '<span class="no">NO</span>') +
+  "<br>Modo escritorio de Chrome: " + (/Android/i.test(ua) ? '<span class="ok">NO</span>' : '<span class="no">PROBABLEMENTE SÍ</span>') +
+  "<br><br>" + ua;
+
+const FIN = "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
+const texto = letra => [
+  "================================",
+  "        PRUEBA " + letra,
+  "================================",
+  "Linea 1: HOLA DONDECAMILA",
+  "Linea 2: 1234567890",
+  "Linea 3: $12.00  Bs. 11.040,00",
+  "--------------------------------",
+  "         FIN PRUEBA " + letra,
+  "", "", ""
+];
+function prueba(p) {
+  if (p === "A") location.href = "intent:" + encodeURIComponent(texto("A").join("\n")) + FIN;
+  if (p === "B") location.href = "intent:" + encodeURIComponent(texto("B").join("\r\n")) + FIN;
+  if (p === "C") {
+    const t = texto("C").join("\n") + "\n";
+    const bytes = [0x1B, 0x40, ...Array.from(t, c => c.charCodeAt(0)), 0x1B, 0x64, 3];
+    location.href = "intent:base64," + btoa(String.fromCharCode(...bytes)) + FIN;
+  }
+  if (p === "D") {
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes.");
+    w.document.write('<pre style="font:14px monospace;margin:0">' + texto("D").join("\n") + "</pre>");
+    w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 500);
+  }
+}
+document.querySelectorAll("button").forEach(b => b.onclick = () => prueba(b.dataset.p));
+</script>
+</body>
+</html>
