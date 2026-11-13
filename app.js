@@ -434,11 +434,19 @@ const TIPOS = { delivery: "Delivery", retiro: "Retiro en local", comer: "Comer a
 document.addEventListener("change", e => {
   if (e.target.name !== "mode") return;
   const d = e.target.value === "delivery";
-  $("#address").hidden = !d; $("#address").required = d;
+  mostrarDireccion(d);
 });
-/* Lista de zonas: aparece debajo de la dirección cuando el cliente elige Delivery */
+/* Dirección escrita: solo cuando NO hay zonas creadas en el panel (si hay zonas, la zona es el destino) */
+function mostrarDireccion(esDelivery) {
+  const a = $("#address"); if (!a) return;
+  const usar = esDelivery && !ZONAS.length;
+  a.hidden = !usar; a.required = usar;
+}
+
+/* Lista de zonas: aparece cuando el cliente elige Delivery */
 function renderZonas() {
   const addr = $("#address"); if (!addr) return;
+  mostrarDireccion(modoActual() === "delivery");
   if (!$("#zonas")) { const d = document.createElement("div"); d.id = "zonas"; addr.after(d); }
   const box = $("#zonas");
   if (modoActual() !== "delivery" || !ZONAS.length) { box.innerHTML = ""; box.hidden = true; box.classList.remove("falta"); return; }
@@ -524,7 +532,7 @@ $("#checkout").addEventListener("submit", async e => {
   const order = {
     number, status: "nuevo", total, delivery: mode,
     tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
-    customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
+    customer: { name: f.get("name"), phone: f.get("phone"), address: mode !== "delivery" ? "" : zona ? zona.name : (f.get("address") || "") },
     notes: f.get("notes") || "",
     items: lineas,
     createdAt: serverTimestamp()
@@ -536,7 +544,7 @@ $("#checkout").addEventListener("submit", async e => {
     ...(TASA ? [`*Total en bolívares: ${bs(total)}*`] : []), "",
     `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
     `Tipo: ${TIPOS[mode]}`,
-    ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
+    ...(mode === "delivery" ? [`${zona ? "Destino" : "Dirección"}: ${order.customer.address}`] : []),
     order.notes ? `Notas: ${order.notes}` : ""
   ].join("\n");
   const w = window.open("", "_blank");           // se abre antes del await para evitar bloqueos
@@ -545,7 +553,7 @@ $("#checkout").addEventListener("submit", async e => {
   catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
   const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
   w ? (w.location.href = url) : (location.href = url);
-  cart = {}; zonaSel = null; zonasAbiertas = false; save(); e.target.reset(); renderCart(); drawer(false); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
+  cart = {}; zonaSel = null; zonasAbiertas = false; save(); e.target.reset(); renderCart(); drawer(false); mostrarDireccion(false); btn.disabled = false;
   toast(`Pedido #${number} enviado`);
 });
 
