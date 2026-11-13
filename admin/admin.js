@@ -1,428 +1,514 @@
-import { auth, db, SETTINGS, COLLECTIONS, ORDERS } from "/firebase-config.js";
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, onSnapshot, query, orderBy, limit, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { db, SETTINGS, COLLECTIONS, ORDERS } from "./firebase-config.js";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { escucharTasa, formatoBs, aBolivares } from "./tasa.js";
 
-window.__adminReady = true;
 const $ = s => document.querySelector(s);
-const money = n => SETTINGS.currency + Number(n).toFixed(2);
+const { whatsapp, currency, business } = SETTINGS;
+const money = n => currency + Number(n).toFixed(2);
+let PRODUCTS = [], ADDONS = [], category = "Todos", term = "", cart = {};
 
-/* ---------- Tasa (BCV de referencia + tu tasa) ----------
-   Se carga aparte: si tasa.js falta o falla, el panel sigue funcionando igual. */
-let TASA = 0, formatoBs = () => "", aBolivares = () => 0;
-import("/tasa-admin.js").then(m => m.montarTasaAdmin($("#tasa-admin")))
-  .catch(e => console.warn("Barra de tasa no disponible:", e));
-import("/tasa.js").then(m => {
-  formatoBs = m.formatoBs; aBolivares = m.aBolivares;
-  m.escucharTasa(v => { TASA = v; renderProducts(); renderOrders(); });
-}).catch(e => console.warn("tasa.js no disponible:", e));
-// Bs. de un pedido: usa la tasa guardada en el pedido (la del momento en que se hizo)
-const bsPedido = (o, usd) => o.tasa ? " · " + formatoBs(aBolivares(usd, o.tasa)) : "";
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-/* Categorías del panel: las de la tienda + "Adicionales" (estos no se muestran como productos en la tienda) */
-const BEBIDAS = "Bebidas", COMBOS = "Combos", ADIC = "Adicionales", DELIV = "Delivery";
-const CATS = { ...COLLECTIONS, [ADIC]: "adicionales", [DELIV]: "dc_delivery" };
-const LABEL = { nuevo: "Pendiente de pago", confirmado: "Confirmado", entregado: "Entregado", cancelado: "Cancelado" };
-let orders = [], products = [], unsubs = [], first = true; const byCol = {};
+const BEBIDAS = "Bebidas", COMBOS = "Combos";
+const ADICIONALES = "adicionales";            // colección de adicionales (no se muestran como productos)
+const ZONAS_DELIVERY = "dc_delivery";         // zonas de delivery con su precio (se cargan en el panel)
 
-const banner = m => { $("#banner").textContent = m || ""; $("#banner").hidden = !m; };
-const dbErr = (what, e) => banner(e.code === "permission-denied"
-  ? `Sin permiso para leer ${what}. Publica las reglas de Firestore y entra con el correo de administrador que pusiste en las reglas.`
-  : `Error al leer ${what}: ${e.message}`);
-function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 2500); }
+/* Tasa en bolívares: la que aplicas desde el panel. Bs. = $ × tasa */
+let TASA = 0;
+const bs = usd => TASA ? formatoBs(aBolivares(usd, TASA)) : "";
+document.head.insertAdjacentHTML("beforeend", `<style>
+  .price-bs{display:flex;flex-direction:column;line-height:1.15}
+  .price-bs small,.bs-line{font-size:12px;opacity:.65;font-weight:400}
+  #totalBs{display:block;font-size:13px;opacity:.7;font-weight:400;margin-top:2px}
 
-/* ---------- Sesión ---------- */
-const AUTH_MSG = {
-  "auth/invalid-credential": "Correo o contraseña incorrectos.", "auth/wrong-password": "Correo o contraseña incorrectos.",
-  "auth/user-not-found": "Correo o contraseña incorrectos.", "auth/invalid-email": "El correo no es válido.",
-  "auth/unauthorized-domain": "Este dominio no está autorizado: agrégalo en Firebase → Authentication → Settings → Authorized domains.",
-  "auth/operation-not-allowed": "Activa el proveedor Email/Password en Firebase → Authentication.",
-  "auth/network-request-failed": "Sin conexión a internet."
-};
-$("#loginForm").onsubmit = async e => {
-  e.preventDefault(); $("#err").textContent = "";
-  try { await signInWithEmailAndPassword(auth, e.target.email.value, e.target.password.value); }
-  catch (x) { $("#err").textContent = AUTH_MSG[x.code] || ("Error: " + (x.code || x.message)); }
-};
-$("#logout").onclick = () => signOut(auth);
-onAuthStateChanged(auth, u => {
-  $("#login").hidden = !!u; $("#panel").hidden = !u;
-  unsubs.forEach(f => f()); unsubs = []; banner("");
-  if (u) start();
+  /* Categorías en el teléfono: una sola línea que se desliza, botones más pequeños */
+  @media (max-width:700px){
+    #chips{display:flex!important;flex-wrap:nowrap!important;justify-content:flex-start!important;gap:8px!important;
+      overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;padding:2px 0!important;margin-left:0!important;margin-right:0!important;max-width:100%;
+      -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+              mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+    #chips::-webkit-scrollbar{display:none}
+    #chips .chip{flex:none!important;font-size:13px!important;padding:7px 14px!important;min-height:0!important;
+      line-height:1.2!important;white-space:nowrap;scroll-snap-align:start;margin:0!important}
+  }
+
+  /* Títulos de sección dentro del menú (Combos / Menú) */
+  .sec-t{grid-column:1/-1;font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:10px 0 -4px}
+  .sec-t:first-child{margin-top:0}
+  .card.combo .incl{font-size:13px;line-height:1.35;margin:-2px 0 6px;opacity:.85}
+  .card.combo .incl b{font-weight:600}
+  .save{display:inline-block;font-size:11px;font-weight:600;color:#1a7f37;background:#dff5e3;border-radius:999px;padding:2px 8px;margin-top:4px;width:max-content}
+
+  .drinks{box-sizing:border-box;grid-column:1/-1;width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:6px 22px 8px}
+  .drinks-t{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;opacity:.55;margin:14px 0 4px}
+  .drink-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;padding:14px 0;border-top:1px solid rgba(0,0,0,.07)}
+  .drinks-t + .drink-row{border-top:0}
+  .drink-row .dn{min-width:0}
+  .drink-row .dn b{display:block;font-weight:500;overflow-wrap:anywhere}
+  .drink-row .dn small{font-size:12px;color:#b3261e}
+  .drink-row .dp{text-align:right;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+  .drink-row .dp small{font-size:12px;opacity:.6}
+  .drink-row .add{width:auto!important;min-width:0;flex:none;margin:0!important;padding-left:22px;padding-right:22px;white-space:nowrap}
+  .drink-row.sold .dn b,.drink-row.sold .dp{opacity:.45}
+  @media (max-width:560px){
+    .drinks{padding:4px 14px 6px}
+    .drink-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px;column-gap:12px}
+    .drink-row .dn{grid-column:1/-1}
+    .drink-row .dp{text-align:left;align-items:flex-start}
+  }
+
+  /* "¿Y la bebida?" dentro del carrito */
+  #drinkUpsell{margin:12px 0 4px}
+  #drinkUpsell *{box-sizing:border-box}
+  .up-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px;border-radius:12px;
+    border:1.5px dashed rgba(0,0,0,.25);background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}
+  .up-btn:hover{border-color:rgba(0,0,0,.55);background:rgba(0,0,0,.03)}
+  .up-box{border:1px solid rgba(0,0,0,.1);border-radius:14px;overflow:hidden;animation:upIn .18s ease}
+  @keyframes upIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .up-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(0,0,0,.035)}
+  .up-head b{font-size:14px}
+  .up-done{border:0;background:#0b0b0b;color:#fff;border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .up-list{max-height:260px;overflow-y:auto}
+  .up-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid rgba(0,0,0,.07)}
+  .up-row .un{flex:1;min-width:0}
+  .up-row .un b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}
+  .up-row .un small{font-size:12px;opacity:.6}
+  .up-q{display:flex;align-items:center;gap:8px;flex:none}
+  .up-q button{width:30px;height:30px;border-radius:50%;border:1px solid rgba(0,0,0,.2);background:#fff;color:#0b0b0b;font-size:16px;line-height:1;cursor:pointer}
+  .up-q button.plus{background:#0b0b0b;color:#fff;border-color:#0b0b0b}
+  .up-q span{min-width:16px;text-align:center;font-weight:600}
+
+  /* Detalle de cada línea del carrito (adicionales / contenido del combo) */
+  .line .det{display:block;font-size:12px;opacity:.65;margin-top:1px}
+
+  /* Zonas de delivery en el formulario del pedido */
+  #zonas{margin:10px 0 4px}
+  #zonas *{box-sizing:border-box}
+  #zonas .z-t{font-size:13px;font-weight:600;margin:0 0 6px}
+  #zonas .z-list{border:1px solid rgba(0,0,0,.12);border-radius:12px;overflow:hidden;background:#fff}
+  #zonas label{display:flex;align-items:center;gap:10px;padding:11px 12px;border-top:1px solid rgba(0,0,0,.07);cursor:pointer;margin:0;font-weight:400}
+  #zonas label:first-child{border-top:0}
+  #zonas label.on{background:rgba(0,0,0,.04)}
+  #zonas input{width:18px;height:18px;margin:0;flex:none;accent-color:#0b0b0b}
+  #zonas .zn{flex:1;min-width:0;overflow-wrap:anywhere}
+  #zonas .zp{text-align:right;white-space:nowrap;font-weight:600;font-size:14px}
+  #zonas .zp small{display:block;font-weight:400;font-size:11px;opacity:.6}
+  #zonas.falta .z-list{border-color:#b3261e;box-shadow:0 0 0 2px rgba(179,38,30,.15)}
+  #zonas .z-err{color:#b3261e;font-size:12px;margin:6px 0 0;display:none}
+  #zonas.falta .z-err{display:block}
+  #envioNota{display:block;font-size:12px;opacity:.7;font-weight:400;margin-top:2px}
+
+  /* Hoja de adicionales */
+  #addonSheet{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45);padding:0}
+  #addonSheet[hidden]{display:none}
+  #addonSheet *{box-sizing:border-box}
+  .as-box{width:min(460px,100%);max-height:88vh;display:flex;flex-direction:column;background:#fff;color:#0b0b0b;
+    border-radius:20px 20px 0 0;animation:asIn .22s ease;font-family:inherit}
+  @keyframes asIn{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+  @media (min-width:600px){#addonSheet{align-items:center;padding:20px}.as-box{border-radius:20px}}
+  .as-head{padding:20px 20px 10px}
+  .as-head small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55}
+  .as-head h3{font-size:19px;margin:4px 0 0;line-height:1.2}
+  .as-head p{font-size:13px;opacity:.65;margin:4px 0 0}
+  .as-list{overflow-y:auto;padding:0 20px}
+  .as-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid rgba(0,0,0,.08);cursor:pointer}
+  .as-row input{width:20px;height:20px;accent-color:#0b0b0b;flex:none;margin:0}
+  .as-row .an{flex:1;min-width:0;font-weight:500;overflow-wrap:anywhere}
+  .as-row .ap{text-align:right;white-space:nowrap;font-size:14px;font-weight:600}
+  .as-row .ap small{display:block;font-size:11px;font-weight:400;opacity:.6}
+  .as-foot{padding:14px 20px 20px;border-top:1px solid rgba(0,0,0,.08);display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+  .as-foot button{border-radius:999px;padding:13px 14px;font:inherit;font-weight:600;cursor:pointer}
+  .as-skip{background:#fff;border:1px solid rgba(0,0,0,.2);color:#0b0b0b}
+  .as-ok{background:#0b0b0b;border:0;color:#fff}
+  .as-ok small{display:block;font-size:11px;font-weight:400;opacity:.75}
+</style>`);
+escucharTasa(v => {
+  TASA = v;
+  renderGrid(); renderCart();
+  if (openId && !$("#modal").hidden) $("#mPrice").innerHTML = precioModal(PRODUCTS.find(x => x.id === openId));
+  if (!$("#addonSheet").hidden) pintarSheet();
 });
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
-  $("#orders").hidden = b.dataset.t !== "orders"; $("#products").hidden = b.dataset.t !== "products";
+
+try { cart = JSON.parse(localStorage.getItem("dc-cart")) || {}; } catch (e) {}
+const save = () => { try { localStorage.setItem("dc-cart", JSON.stringify(cart)); } catch (e) {} };
+$("#contactLink").href = $("#waFloat").href = `https://wa.me/${whatsapp}`;
+$("#empty").hidden = false; $("#empty").textContent = "Cargando menú…";
+
+/* Productos en vivo: solo de las colecciones definidas en COLLECTIONS */
+const LABELS = Object.keys(COLLECTIONS), byCol = {};
+LABELS.forEach(label => {
+  onSnapshot(collection(db, COLLECTIONS[label]), snap => {
+    byCol[label] = snap.docs.map(d => ({ id: d.id, col: COLLECTIONS[label], ...d.data(), category: label }));
+    PRODUCTS = LABELS.flatMap(l => (byCol[l] || []).slice().sort((x, y) => (y.createdAt?.seconds || 0) - (x.createdAt?.seconds || 0)))
+      .filter(p => p.active !== false);
+    renderChips(); renderGrid(); renderCart();
+  }, err => {
+    console.error(err);
+    $("#empty").hidden = false; $("#empty").textContent = "No se pudo cargar el menú. Intenta de nuevo en unos minutos.";
+  });
 });
+/* Adicionales (papas extra, queso extra…): solo se ofrecen al pedir productos que los permiten */
+onSnapshot(collection(db, ADICIONALES), snap => {
+  ADDONS = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  renderCart();
+}, err => console.warn("Adicionales no disponibles:", err));
 
-function start() {
-  first = true;
-  unsubs.push(onSnapshot(query(collection(db, ORDERS), orderBy("createdAt", "desc"), limit(600)), snap => {
-    banner("");
-    if (!first && snap.docChanges().some(c => c.type === "added" && !c.doc.metadata.hasPendingWrites)) beep();
-    first = false;
-    orders = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderOrders();
-  }, e => dbErr("los pedidos", e)));
-  Object.entries(CATS).forEach(([label, col]) => {
-    unsubs.push(onSnapshot(collection(db, col), snap => {
-      byCol[label] = snap.docs.map(d => ({ id: d.id, col, ...d.data(), category: label }));
-      products = Object.values(byCol).flat().sort((x, y) => (y.createdAt?.seconds || 0) - (x.createdAt?.seconds || 0));
-      renderProducts(); renderComboPick();
-    }, e => dbErr("los productos (" + label + ")", e)));
-  });
-}
-function beep() {
-  try { const a = new AudioContext(), o = a.createOscillator(); o.connect(a.destination); o.frequency.value = 880; o.start(); o.stop(a.currentTime + .3); } catch {}
-  toast("🔔 Nuevo pedido recibido");
-}
+/* Zonas de delivery (ej: "Zona Centro $2"): el cliente elige una y se suma al total */
+let ZONAS = [], zonaSel = null;
+onSnapshot(collection(db, ZONAS_DELIVERY), snap => {
+  ZONAS = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => Number(a.price) - Number(b.price) || String(a.name).localeCompare(String(b.name)));
+  if (zonaSel && !ZONAS.some(z => z.id === zonaSel)) zonaSel = null;
+  renderCart();
+}, err => console.warn("Zonas de delivery no disponibles:", err));
+const modoActual = () => document.querySelector('input[name="mode"]:checked')?.value;
+const envio = () => modoActual() === "delivery" ? ZONAS.find(z => z.id === zonaSel) || null : null;
 
-/* ---------- Pedidos ---------- */
-const fdate = o => { const d = o.createdAt?.toDate?.(); return d ? d.toLocaleString("es-VE") : "…"; };
-const waNum = p => { let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "58" + d.slice(1); return d; };
-const kind = o => ({ delivery: "Delivery", comer: "Comer aquí" })[o.delivery] || "Retiro en local";
-
-/* Periodo: hoy / ayer / esta semana (desde el lunes) / este mes */
-function rangoFechas(r) {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const dia = 864e5;
-  if (r === "hoy") return [hoy, null];
-  if (r === "ayer") return [new Date(hoy - dia), hoy];
-  if (r === "semana") { const d = new Date(hoy); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [d, null]; }
-  if (r === "mes") return [new Date(hoy.getFullYear(), hoy.getMonth(), 1), null];
-  return [null, null];
+/* ---------- Combos ---------- */
+const incluye = p => (p.items || []).map(i => `${i.qty} ${i.name}`).join(", ");
+function ahorro(p) {
+  const separado = (p.items || []).reduce((s, i) => {
+    const x = PRODUCTS.find(y => y.id === i.id);
+    return s + (x ? Number(x.price) * i.qty : 0);
+  }, 0);
+  return separado > p.price ? separado - p.price : 0;
 }
-function renderOrders() {
-  const f = $("#filter").value, q = $("#q").value.replace(/\D/g, "");
-  const [desde, hasta] = rangoFechas($("#range").value);
-  const list = orders.filter(o => {
-    if (f && o.status !== f) return false;
-    if (q && !String(o.number || "").includes(q)) return false;
-    const d = o.createdAt?.toDate?.();
-    if (desde && (!d || d < desde)) return false;
-    if (hasta && (!d || d >= hasta)) return false;
-    return true;
-  });
-  const validos = list.filter(o => o.status !== "cancelado");
-  const suma = validos.reduce((s, o) => s + Number(o.total || 0), 0);
-  $("#osum").textContent = list.length
-    ? `${list.length} pedido${list.length === 1 ? "" : "s"} · Vendido: ${money(suma)}${validos.some(o => o.totalBs) ? " · " + formatoBs(validos.reduce((s, o) => s + Number(o.totalBs || 0), 0)) : ""}`
-    : "";
-  $("#newCount").textContent = orders.filter(o => o.status === "nuevo").length || "";
-  $("#ordersList").innerHTML = list.length ? list.map(o => {
-    const paid = o.status === "confirmado" || o.status === "entregado";
-    return `
-    <article class="card st-${esc(o.status)}">
-      <div class="h"><b>Pedido #${esc(o.number)}</b><span>${fdate(o)}</span><span class="st ${esc(o.status)}" style="flex:none">${LABEL[o.status] || esc(o.status)}</span></div>
-      <p><b>${esc(o.customer?.name)}</b> · ${esc(o.customer?.phone)}<br><b>${kind(o)}</b>${o.delivery === "delivery" ? " · " + esc(o.customer?.address) : ""}${o.notes ? `<br><i>Notas: ${esc(o.notes)}</i>` : ""}</p>
-      <ul>${(o.items || []).map(i => `<li><span>${esc(i.qty)} × ${esc(i.name)}${i.detail ? `<br><small style="color:#777">${esc(i.detail)}</small>` : ""}</span><span>${money(i.qty * i.price)}</span></li>`).join("")}</ul>
-      <div class="f"><strong>Total ${money(o.total)}${bsPedido(o, o.total)}${o.tasa ? `<small style="font-weight:400;color:#777"> (tasa ${formatoBs(o.tasa)})</small>` : ""}</strong><span>
-        ${o.status === "nuevo" ? `<button class="btn" data-a="confirm" data-id="${o.id}">Confirmar pedido (pago recibido)</button>` : ""}
-        ${o.status === "confirmado" ? `<button class="btn ghost" data-a="done" data-id="${o.id}">Marcar entregado</button>` : ""}
-        ${paid ? `<button class="btn" data-a="print" data-id="${o.id}">${EN_APP || ES_ANDROID ? "🖨️ Imprimir ticket" : "Imprimir factura"}</button>` : ""}
-        <a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(o.customer?.phone)}">WhatsApp</a>
-        ${o.status === "nuevo" ? `<button class="btn red" data-a="cancel" data-id="${o.id}">Cancelar</button>` : ""}
-        <button class="btn red" data-a="del" data-id="${o.id}">Eliminar</button></span></div>
+const comboTieneBebida = p => (p.items || []).some(i => PRODUCTS.find(y => y.id === i.id)?.category === BEBIDAS);
+
+function renderChips() {
+  const cats = ["Todos", ...LABELS.filter(l => PRODUCTS.some(p => p.category === l))];
+  if (!cats.includes(category)) category = "Todos";
+  $("#chips").innerHTML = cats.map(c => `<button class="chip${c === category ? " on" : ""}" data-c="${c}">${c}</button>`).join("");
+}
+$("#chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  category = b.dataset.c; renderChips(); renderGrid();
+  // en el teléfono, deja visible la categoría elegida dentro de la línea
+  $(`#chips .chip[data-c="${CSS.escape(category)}"]`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+});
+$("#search").addEventListener("input", e => { term = e.target.value.trim().toLowerCase(); renderGrid(); });
+
+const tarjeta = p => {
+  const esCombo = p.category === COMBOS, ah = esCombo ? ahorro(p) : 0;
+  return `
+    <article class="card${p.soldOut ? " sold" : ""}${esCombo ? " combo" : ""}" data-id="${p.id}" tabindex="0">
+      <div class="img">
+        ${p.image ? `<img src="${p.image}" alt="${p.name}" loading="lazy">` : ""}
+        ${p.soldOut ? '<span class="tag dark">Agotado</span>' : p.badge ? `<span class="tag">${p.badge}</span>` : ""}
+      </div>
+      <div class="info">
+        <small>${p.category || ""}</small>
+        <h4>${p.name}</h4>
+        ${esCombo && p.items?.length ? `<p class="incl"><b>Incluye:</b> ${incluye(p)}</p>` : ""}
+        <p>${p.description || ""}</p>
+        <div class="row"><span class="price-bs"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}${ah ? `<span class="save">Ahorras ${money(ah)}</span>` : ""}</span>
+          <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
+        </div>
+      </div>
     </article>`;
-  }).join("") : `<p class="mute">${orders.length ? "No hay pedidos con estos filtros." : "Aún no hay pedidos. Cuando un cliente pida desde la tienda, aparecerá aquí."}</p>`;
-}
-$("#filter").onchange = $("#range").onchange = renderOrders;
-$("#q").oninput = renderOrders;
-const setStatus = (id, status, extra = {}) => updateDoc(doc(db, ORDERS, id), { status, ...extra }).catch(x => toast("Error: " + x.message));
-$("#ordersList").addEventListener("click", e => {
-  const b = e.target.closest("button[data-a]"); if (!b) return;
-  const o = orders.find(x => x.id === b.dataset.id), a = b.dataset.a;
-  if (a === "confirm" && confirm(`¿Confirmar que el pedido #${o.number} fue pagado?`)) setStatus(o.id, "confirmado", { confirmedAt: serverTimestamp() });
-  if (a === "done") setStatus(o.id, "entregado");
-  if (a === "cancel" && confirm(`¿Cancelar el pedido #${o.number}?`)) setStatus(o.id, "cancelado");
-  if (a === "print") EN_APP ? imprimirApp(o) : ES_ANDROID ? imprimirRawBT(o) : printInvoice(o);
-  if (a === "del" && confirm(`¿Eliminar el pedido #${o.number}? No se puede deshacer.`)) deleteDoc(doc(db, ORDERS, o.id)).catch(x => toast(x.message));
-});
-
-function printInvoice(o) {
-  const w = window.open("", "_blank", "width=420,height=720");
-  if (!w) return alert("Permite las ventanas emergentes para imprimir.");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Factura #${esc(o.number)}</title>
-<style>body{font:13px/1.4 "Courier New",monospace;width:300px;margin:0 auto;padding:12px;color:#000}
-.c{text-align:center}img{width:90px;border-radius:50%}h2{margin:6px 0 2px;font-size:17px}
-hr{border:0;border-top:1px dashed #000;margin:10px 0}table{width:100%;border-collapse:collapse}
-td{padding:3px 0;vertical-align:top}td:last-child{text-align:right;white-space:nowrap}
-.t td{font-size:16px;font-weight:bold;padding-top:6px}@page{margin:6mm}</style></head><body>
-<div class="c"><img src="${location.origin}/images/logo.png" alt=""><h2>${esc(SETTINGS.business)}</h2>
-<div>Tel: ${esc(SETTINGS.phone)}</div></div><hr>
-<div><b>FACTURA #${esc(o.number)}</b><br>Fecha: ${fdate(o)}<br>Cliente: ${esc(o.customer?.name)}<br>Tel: ${esc(o.customer?.phone)}<br>
-Tipo: <b>${kind(o)}</b>${o.delivery === "delivery" ? `<br>Dirección: ${esc(o.customer?.address)}` : ""}</div><hr>
-<table>${(o.items || []).map(i => `<tr><td>${esc(i.qty)} x ${esc(i.name)}${i.detail ? `<br>&nbsp;&nbsp;(${esc(i.detail)})` : ""}<br>&nbsp;&nbsp;${money(i.price)} c/u</td><td>${money(i.qty * i.price)}</td></tr>`).join("")}
-<tr class="t"><td>TOTAL</td><td>${money(o.total)}</td></tr>
-${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, o.tasa))}</td></tr>` : ""}</table>
-${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO CONFIRMADO<br>¡Gracias por tu compra!</div></body></html>`);
-  w.document.close();
-  setTimeout(() => { w.focus(); w.print(); }, 600);
-}
-
-/* ---------- Ticket para impresora térmica (tablet Android + app RawBT) ----------
-   En Android, "Imprimir factura" manda el ticket directo a RawBT en formato ESC/POS:
-   sin ventana de impresión y con el ancho exacto del rollo.
-   TICKET_COLS: 32 para rollo de 58 mm (impresora 602-R58D) · 48 para rollo de 80 mm. */
-const TICKET_COLS = 32;
-// Las tablets abren Chrome en "modo escritorio" y se hacen pasar por PC; por eso se revisan varias señales.
-// Dentro de la app "Panel Dondecamila": imprime directo por Bluetooth, en texto (como Zobaze)
-const EN_APP = typeof window.DCPrinter !== "undefined";
-const ES_ANDROID = /Android/i.test(navigator.userAgent)
-  || navigator.userAgentData?.platform === "Android"
-  || (/Linux/i.test(navigator.platform || navigator.userAgent) && navigator.maxTouchPoints > 1);
-// Tabla PC850: la que usa la impresora 602-R58D por defecto (se vio en el ticket de Zobaze)
-const CP437 = { "á": 0xA0, "é": 0x82, "í": 0xA1, "ó": 0xA2, "ú": 0xA3, "ñ": 0xA4, "Ñ": 0xA5, "ü": 0x81, "Ü": 0x9A,
-  "Á": 0xB5, "É": 0x90, "Í": 0xD6, "Ó": 0xE0, "Ú": 0xE9, "¿": 0xA8, "¡": 0xAD, "°": 0xF8 };
-function aBytes(str) {
-  const out = [];
-  for (const ch of String(str ?? "")) {
-    const c = ch.charCodeAt(0);
-    if (c >= 32 && c < 127) out.push(c);
-    else if (CP437[ch]) out.push(CP437[ch]);
-    else if (/\s/.test(ch)) out.push(32);
-    else for (const x of ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) out.push(x.charCodeAt(0) < 127 ? x.charCodeAt(0) : 63);
-  }
-  return out;
-}
-function partir(texto, ancho) {
-  const lineas = []; let actual = "";
-  for (let p of String(texto ?? "").split(/\s+/).filter(Boolean)) {
-    while (p.length > ancho) { if (actual) { lineas.push(actual); actual = ""; } lineas.push(p.slice(0, ancho)); p = p.slice(ancho); }
-    if (!p) continue;
-    if (!actual) actual = p;
-    else if ((actual + " " + p).length <= ancho) actual += " " + p;
-    else { lineas.push(actual); actual = p; }
-  }
-  if (actual) lineas.push(actual);
-  return lineas.length ? lineas : [""];
-}
-function ticketBytes(o) {
-  const W = TICKET_COLS, ESC = 0x1B, GS = 0x1D, B = [];
-  const cmd = (...b) => B.push(...b);
-  const ln = (s = "") => { B.push(...aBytes(s), 0x0A); };
-  const sep = () => ln("-".repeat(W));
-  const fila = (izq, der) => {
-    const partes = partir(izq, W - der.length - 1);
-    partes.forEach((p, i) => ln(i === 0 ? p.padEnd(W - der.length) + der : p));
-  };
-  const bloque = (texto, sangria = "") => partir(texto, W - sangria.length).forEach(l => ln(sangria + l));
-  const centro = on => cmd(ESC, 0x61, on ? 1 : 0);
-  const negrita = on => cmd(ESC, 0x45, on ? 1 : 0);
-  const tamaño = n => cmd(GS, 0x21, n);   // 0 normal · 0x01 doble alto · 0x11 doble alto y ancho
-
-  cmd(ESC, 0x40);                        // reiniciar impresora (queda en su tabla PC850: acentos y ñ)
-  centro(true); negrita(true); tamaño(0x11); ln(SETTINGS.business); tamaño(0); negrita(false);
-  ln("Tel: " + SETTINGS.phone);
-  centro(false); sep();
-  negrita(true); ln("FACTURA #" + o.number); negrita(false);
-  ln("Fecha: " + fdate(o));
-  bloque("Cliente: " + (o.customer?.name || ""));
-  ln("Tel: " + (o.customer?.phone || ""));
-  negrita(true); ln("Tipo: " + kind(o)); negrita(false);
-  if (o.delivery === "delivery") bloque("Dirección: " + (o.customer?.address || ""));
-  sep();
-  (o.items || []).forEach(i => {
-    fila(`${i.qty} x ${i.name}`, money(i.qty * i.price));
-    if (i.detail) bloque("(" + i.detail + ")", "   ");
-    if (i.qty > 1) ln("   " + money(i.price) + " c/u");
-  });
-  sep();
-  negrita(true); tamaño(0x01);
-  fila("TOTAL", money(o.total));
-  if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
-  tamaño(0); negrita(false);
-  if (o.notes) { sep(); bloque("Notas: " + o.notes); }
-  sep();
-  centro(true); negrita(true); ln("PAGO CONFIRMADO"); negrita(false); ln("¡Gracias por tu compra!"); centro(false);
-  cmd(ESC, 0x64, 4);                     // avanzar papel para poder arrancarlo (esta impresora no corta)
-  return B;
-}
-/* Ticket en TEXTO SIMPLE: el mismo camino que usa la prueba de texto de RawBT.
-   Sin comandos especiales ni imágenes, así funciona en cualquier impresora térmica.
-   Las tildes y la ñ se quitan (Peña → Pena) porque esta impresora no las imprime bien. */
-const sinAcentos = t => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E\n]/g, "");
-function ticketTexto(o) {
-  const W = TICKET_COLS, L = [];
-  const ln = (s = "") => L.push(sinAcentos(s));
-  const sep = () => ln("-".repeat(W));
-  const centro = s => { s = sinAcentos(s); ln(" ".repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s); };
-  const fila = (izq, der) => partir(sinAcentos(izq), W - der.length - 1).forEach((p, i) => ln(i === 0 ? p.padEnd(W - der.length) + der : p));
-  const bloque = (texto, sangria = "") => partir(sinAcentos(texto), W - sangria.length).forEach(l => ln(sangria + l));
-
-  centro(String(SETTINGS.business).toUpperCase());
-  centro("Tel: " + SETTINGS.phone);
-  sep();
-  ln("FACTURA #" + o.number);
-  ln("Fecha: " + fdate(o));
-  bloque("Cliente: " + (o.customer?.name || ""));
-  ln("Tel: " + (o.customer?.phone || ""));
-  ln("Tipo: " + kind(o));
-  if (o.delivery === "delivery") bloque("Direccion: " + (o.customer?.address || ""));
-  sep();
-  (o.items || []).forEach(i => {
-    fila(`${i.qty} x ${i.name}`, money(i.qty * i.price));
-    if (i.detail) bloque("(" + i.detail + ")", "   ");
-    if (i.qty > 1) ln("   " + money(i.price) + " c/u");
-  });
-  sep();
-  fila("TOTAL", money(o.total));
-  if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
-  if (o.notes) { sep(); bloque("Notas: " + o.notes); }
-  sep();
-  centro("PAGO CONFIRMADO");
-  centro("Gracias por tu compra!");
-  ln(""); ln(""); ln("");
-  return L.join("\n");
-}
-/* En la app: el ticket con comandos de impresora (negritas, letra grande, acentos y ñ) va directo por Bluetooth */
-function imprimirApp(o) {
-  const bytes = ticketBytes(o);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 4096) bin += String.fromCharCode(...bytes.slice(i, i + 4096));
-  window.DCPrinter.imprimir(btoa(bin));
-}
-// Botón para cambiar de impresora (solo dentro de la app)
-if (EN_APP) {
-  const b = document.createElement("button");
-  b.className = "btn ghost"; b.type = "button"; b.textContent = "🖨️ Impresora";
-  b.title = "Elegir o cambiar la impresora Bluetooth";
-  b.onclick = () => window.DCPrinter.elegir();
-  $("#logout").before(b);
-}
-
-function imprimirRawBT(o) {
-  // Si RawBT no está instalado, Android abre la Play Store para instalarlo
-  location.href = "intent:" + encodeURIComponent(ticketTexto(o)) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
-}
-
-/* ---------- Subir producto ---------- */
-const toData = file => new Promise((ok, fail) => {
-  const r = new FileReader(); r.onerror = fail;
-  r.onload = () => {
-    const i = new Image(); i.onerror = fail;
-    i.onload = () => {
-      const s = Math.min(1, 900 / Math.max(i.width, i.height)), c = document.createElement("canvas");
-      c.width = Math.round(i.width * s); c.height = Math.round(i.height * s);
-      c.getContext("2d").drawImage(i, 0, 0, c.width, c.height);
-      ok(c.toDataURL("image/jpeg", .8));
-    };
-    i.src = r.result;
-  };
-  r.readAsDataURL(file);
-});
-const F = () => $("#pform").elements;
-// Orden del selector: productos normales primero; luego Combos, Bebidas y Adicionales
-const ESPECIALES = [COMBOS, BEBIDAS, ADIC, DELIV];
-F().cat.innerHTML = [...Object.keys(CATS).filter(c => !ESPECIALES.includes(c)), ...ESPECIALES.filter(c => CATS[c])]
-  .map(c => `<option>${esc(c)}</option>`).join("");
-
-/* Campos según la categoría:
-   - Bebidas: nombre, precio, agotado, visible
-   - Adicionales: solo nombre y precio
-   - Combos: todo + elegir los productos que incluye */
-function camposSegunCategoria() {
-  const c = F().cat.value, isB = c === BEBIDAS, isD = c === DELIV, isA = c === ADIC || isD, isC = c === COMBOS;
-  const ocultar = (el, h) => el.closest("label").hidden = h;
-  [F().desc, F().badge, F().img].forEach(el => ocultar(el, isB || isA));
-  [F().sold, F().act].forEach(el => ocultar(el, isA));
-  ocultar(F().extras, isB || isA);
-  $("#comboBox").hidden = !isC;
-  if (isB || isA) $("#preview").hidden = true;
-  F().n.placeholder = isB ? "Ej: Pepsi-Cola 2 litros" : isD ? "Ej: Zona Centro" : isA ? "Ej: Papas extra" : isC ? "Ej: Combo Familiar" : "";
-  $("#saveBtn").textContent = isD ? "Guardar delivery" : isA ? "Guardar adicional" : isC ? "Guardar combo" : "Guardar producto";
-  if (isC) renderComboPick();
-}
-F().cat.onchange = camposSegunCategoria;
-
-/* Selector de productos del combo */
-let comboSel = {};   // { idProducto: cantidad }
-function renderComboPick() {
-  const box = $("#comboPick"); if (!box || $("#comboBox").hidden) return;
-  const elegibles = products.filter(p => p.category !== COMBOS && p.category !== ADIC && p.category !== DELIV)
-    .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-  box.innerHTML = elegibles.length ? elegibles.map(p => {
-    const q = comboSel[p.id] || 0;
-    return `<div class="cp${q ? " on" : ""}"><span><b>${esc(p.name)}</b><small>${esc(p.category)} · ${money(p.price)}</small></span>
-      <span class="cpq">${q ? `<button type="button" data-cp="-" data-id="${p.id}">−</button><b>${q}</b>` : ""}<button type="button" class="plus" data-cp="+" data-id="${p.id}">+</button></span></div>`;
-  }).join("") : '<p class="mute" style="padding:12px">Primero sube productos para poder armar combos.</p>';
-  const sel = Object.entries(comboSel).filter(([, q]) => q > 0);
-  const separado = sel.reduce((s, [id, q]) => s + (products.find(p => p.id === id)?.price || 0) * q, 0);
-  $("#comboSum").textContent = sel.length
-    ? `${sel.reduce((s, [, q]) => s + q, 0)} producto(s) · Precio por separado: ${money(separado)}. Pon un precio menor para que el cliente vea cuánto ahorra.`
-    : "Toca + para agregar productos al combo.";
-}
-$("#comboPick").addEventListener("click", e => {
-  const b = e.target.closest("[data-cp]"); if (!b) return;
-  const id = b.dataset.id;
-  comboSel[id] = Math.max(0, Math.min(20, (comboSel[id] || 0) + (b.dataset.cp === "+" ? 1 : -1)));
-  if (!comboSel[id]) delete comboSel[id];
-  renderComboPick();
-});
-camposSegunCategoria();
-
-function renderProducts() {
-  $("#plist").innerHTML = products.length ? products.map(p => `
-    <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
-      <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}${p.extras ? '<span class="pill">+ Adicionales</span>' : ""}<br><small>${money(p.price)}${TASA ? " · " + formatoBs(aBolivares(p.price, TASA)) : ""}${p.items?.length ? " · Incluye: " + esc(p.items.map(i => i.qty + " " + i.name).join(", ")) : ""}</small></div>
-      <div class="a"><button class="btn ghost" data-a="edit" data-id="${p.id}">Editar</button>
-        ${p.category === ADIC || p.category === DELIV ? "" : `<button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>`}
-        <button class="btn red" data-a="del" data-id="${p.id}">Eliminar</button></div></div>`).join("") : '<p class="mute">Aún no hay productos. Sube el primero con el formulario de arriba.</p>';
-}
-function resetForm() {
-  $("#pform").reset(); F().pid.value = ""; $("#preview").hidden = true;
-  $("#ptitle").textContent = "Nuevo producto"; $("#cancelEdit").hidden = true;
-  comboSel = {}; camposSegunCategoria();
-}
-$("#cancelEdit").onclick = resetForm;
-F().img.onchange = e => {
-  const f = e.target.files[0]; if (!f) return;
-  $("#preview").src = URL.createObjectURL(f); $("#preview").hidden = false;
 };
-$("#pform").onsubmit = async e => {
-  e.preventDefault();
-  const f = e.target.elements, id = f.pid.value, btn = $("#saveBtn"); btn.disabled = true;
-  const cat = f.cat.value;
-  let data = {
-    name: f.n.value.trim(), category: cat, price: parseFloat(f.price.value),
-    description: f.desc.value.trim(), badge: f.badge.value.trim(), soldOut: f.sold.checked, active: f.act.checked,
-    extras: f.extras.checked
-  };
-  try {
-    if (cat === ADIC || cat === DELIV) data = { name: data.name, category: cat, price: data.price };
-    else if (cat === BEBIDAS) Object.assign(data, { description: "", badge: "", image: "", extras: false });
-    else if (f.img.files[0]) data.image = await toData(f.img.files[0]);
-    if (cat === COMBOS) {
-      data.items = Object.entries(comboSel).filter(([, q]) => q > 0).map(([pid, qty]) => {
-        const p = products.find(x => x.id === pid); return { id: pid, name: p?.name || "", qty };
-      }).filter(i => i.name);
-      if (!data.items.length) { alert("Agrega al menos un producto al combo."); btn.disabled = false; return; }
-    }
-    const col = CATS[cat];
-    if (id) {
-      const old = products.find(x => x.id === id);
-      if (old.col === col) await updateDoc(doc(db, col, id), data);
-      else {
-        await addDoc(collection(db, col), { image: old.image || "", ...data, createdAt: old.createdAt || serverTimestamp() });
-        await deleteDoc(doc(db, old.col, id));
+
+function renderGrid() {
+  const list = PRODUCTS.filter(p =>
+    (category === "Todos" || p.category === category) &&
+    [p.name, p.category, p.description, incluye(p)].join(" ").toLowerCase().includes(term));
+  $("#count").textContent = `${list.length} producto${list.length === 1 ? "" : "s"}`;
+  $("#empty").hidden = list.length > 0;
+  $("#empty").textContent = PRODUCTS.length ? "No encontramos productos con esa búsqueda." : "Pronto tendremos productos disponibles.";
+  const combos = list.filter(p => p.category === COMBOS);
+  const comidas = list.filter(p => p.category !== BEBIDAS && p.category !== COMBOS);
+  const bebidas = list.filter(p => p.category === BEBIDAS);
+  const conTitulos = combos.length && comidas.length;   // títulos solo si hay combos y menú a la vez
+  $("#grid").innerHTML =
+    (combos.length ? (conTitulos ? '<h3 class="sec-t">Combos</h3>' : "") + combos.map(tarjeta).join("") : "") +
+    (comidas.length ? (conTitulos ? '<h3 class="sec-t">Menú</h3>' : "") + comidas.map(tarjeta).join("") : "") +
+    (bebidas.length ? `
+    <section class="drinks">
+      <h3 class="drinks-t">Bebidas</h3>
+      ${bebidas.map(p => `
+      <div class="drink-row${p.soldOut ? " sold" : ""}">
+        <div class="dn"><b>${p.name}</b>${p.soldOut ? "<small>Agotado</small>" : ""}</div>
+        <div class="dp"><strong>${money(p.price)}</strong>${TASA ? `<small>${bs(p.price)}</small>` : ""}</div>
+        <button class="add" data-id="${p.id}" ${p.soldOut ? "disabled" : ""}>${p.soldOut ? "Agotado" : "Agregar"}</button>
+      </div>`).join("")}
+    </section>` : "");
+}
+
+/* Agregar: si el producto permite adicionales, primero se le preguntan */
+const permiteAdicionales = p => p && p.extras && ADDONS.length > 0;
+function agregar(id, qty) {
+  const p = PRODUCTS.find(x => x.id === id); if (!p || p.soldOut) return;
+  if (permiteAdicionales(p)) return abrirSheet(p, qty);
+  cart[id] = (cart[id] || 0) + qty; save(); renderCart(); toast("Agregado al pedido");
+}
+$("#grid").addEventListener("click", e => {
+  const b = e.target.closest(".add");
+  if (b) { if (!b.disabled) agregar(b.dataset.id, 1); return; }
+  const c = e.target.closest(".card"); if (c) openModal(c.dataset.id);
+});
+$("#grid").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.classList.contains("card")) openModal(e.target.dataset.id);
+});
+
+/* Detalle del producto */
+let openId = null, mQty = 1;
+function openModal(id) {
+  const p = PRODUCTS.find(x => x.id === id); if (!p) return;
+  openId = id; mQty = 1;
+  $("#mImg").innerHTML = p.image ? `<img src="${p.image}" alt="">` : "";
+  $("#mImg img") && ($("#mImg img").alt = p.name);
+  $("#mCat").textContent = p.category || "";
+  $("#mName").textContent = p.name;
+  const inc = p.category === COMBOS && p.items?.length ? "Incluye: " + incluye(p) + ". " : "";
+  $("#mDesc").textContent = (inc + (p.description || "")).trim() || "Sin descripción.";
+  $("#mPrice").innerHTML = precioModal(p);
+  $("#mQty").textContent = 1;
+  $("#mAdd").disabled = !!p.soldOut;
+  $("#mAdd").textContent = p.soldOut ? "Agotado" : "Agregar al pedido";
+  $("#modal").hidden = false; document.body.style.overflow = "hidden";
+}
+function precioModal(p) {
+  if (!p) return "";
+  return money(p.price) + (TASA ? ` <span class="bs-line">· ${bs(p.price)}</span>` : "");
+}
+const closeModal = () => { $("#modal").hidden = true; document.body.style.overflow = ""; };
+$("#mClose").onclick = closeModal;
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+$("#mMinus").onclick = () => { mQty = Math.max(1, mQty - 1); $("#mQty").textContent = mQty; };
+$("#mPlus").onclick = () => { mQty = Math.min(20, mQty + 1); $("#mQty").textContent = mQty; };
+$("#mAdd").onclick = () => {
+  if (!openId) return;
+  const id = openId, q = mQty; closeModal(); agregar(id, q);
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); cerrarSheet(); } });
+
+/* ---------- Hoja "¿Quieres adicionales?" ---------- */
+document.body.insertAdjacentHTML("beforeend", '<div id="addonSheet" hidden role="dialog" aria-modal="true"></div>');
+let sheet = null;   // { p, qty, sel:Set }
+function abrirSheet(p, qty) { sheet = { p, qty, sel: new Set() }; pintarSheet(); $("#addonSheet").hidden = false; document.body.style.overflow = "hidden"; }
+function cerrarSheet() { if (!sheet) return; sheet = null; $("#addonSheet").hidden = true; document.body.style.overflow = ""; }
+function pintarSheet() {
+  if (!sheet) return;
+  const { p, qty, sel } = sheet;
+  const extra = ADDONS.filter(a => sel.has(a.id)).reduce((s, a) => s + Number(a.price), 0);
+  const unit = Number(p.price) + extra;
+  $("#addonSheet").innerHTML = `
+    <div class="as-box">
+      <div class="as-head"><small>Adicionales</small><h3>¿Le agregas algo a tu ${p.name}?</h3>
+        <p>${qty > 1 ? `Se aplica a las ${qty} unidades. ` : ""}Elige los que quieras o continúa sin adicionales.</p></div>
+      <div class="as-list">${ADDONS.map(a => `
+        <label class="as-row"><input type="checkbox" data-ad="${a.id}" ${sel.has(a.id) ? "checked" : ""}>
+          <span class="an">${a.name}</span>
+          <span class="ap">+${money(a.price)}${TASA ? `<small>${bs(a.price)}</small>` : ""}</span></label>`).join("")}
+      </div>
+      <div class="as-foot">
+        <button type="button" class="as-skip" data-as="skip">Sin adicionales</button>
+        <button type="button" class="as-ok" data-as="ok">Agregar · ${money(unit * qty)}${TASA ? `<small>${bs(unit * qty)}</small>` : ""}</button>
+      </div>
+    </div>`;
+}
+$("#addonSheet").addEventListener("change", e => {
+  const id = e.target.dataset.ad; if (!id || !sheet) return;
+  e.target.checked ? sheet.sel.add(id) : sheet.sel.delete(id); pintarSheet();
+});
+$("#addonSheet").addEventListener("click", e => {
+  if (e.target.id === "addonSheet") return cerrarSheet();
+  const a = e.target.closest("[data-as]")?.dataset.as; if (!a || !sheet) return;
+  const { p, qty, sel } = sheet;
+  const key = a === "ok" && sel.size ? p.id + "~" + [...sel].sort().join(".") : p.id;
+  cart[key] = (cart[key] || 0) + qty; save(); renderCart(); cerrarSheet(); toast("Agregado al pedido");
+});
+
+/* ---------- Carrito ----------
+   Cada línea se guarda con una clave: "idProducto" o "idProducto~idAdicional.idAdicional" */
+function lineaDe(key, q) {
+  const [pid, ads = ""] = key.split("~");
+  const p = PRODUCTS.find(x => x.id === pid);
+  if (!p || p.soldOut) return null;
+  const extras = ads ? ads.split(".").map(id => ADDONS.find(a => a.id === id)).filter(Boolean) : [];
+  if (ads && ADDONS.length && extras.length !== ads.split(".").length) return null;   // un adicional ya no existe
+  const price = Number(p.price) + extras.reduce((s, a) => s + Number(a.price), 0);
+  const name = p.name + (extras.length ? " + " + extras.map(a => a.name).join(" + ") : "");
+  const detail = p.category === COMBOS && p.items?.length ? "Incluye: " + incluye(p) : "";
+  return { key, p, q, price, name, detail };
+}
+const cartItems = () => Object.entries(cart).map(([k, q]) => lineaDe(k, q)).filter(Boolean);
+
+function renderCart() {
+  const items = cartItems();
+  const count = items.reduce((s, i) => s + i.q, 0);
+  const zona = envio();
+  const total = items.reduce((s, i) => s + i.q * i.price, 0) + (count && zona ? Number(zona.price) : 0);
+  $("#cartCount").textContent = count;
+  $("#total").textContent = money(total);
+  if (!$("#totalBs")) { const s = document.createElement("small"); s.id = "totalBs"; $("#total").after(s); }
+  $("#totalBs").textContent = TASA && total ? bs(total) : "";
+  if (!$("#envioNota")) { const s = document.createElement("small"); s.id = "envioNota"; $("#totalBs").after(s); }
+  $("#envioNota").textContent = count && zona ? `Incluye delivery (${zona.name}): ${money(zona.price)}` : "";
+  renderZonas();
+  $("#checkout").style.display = count ? "" : "none";
+  $("#cartItems").innerHTML = count ? items.map(i => `
+    <div class="line">
+      <div><b>${i.name}</b>${i.detail ? `<span class="det">${i.detail}</span>` : ""}<small>${money(i.price)} c/u${TASA ? " · " + bs(i.price) : ""}</small></div>
+      <div class="qty"><button data-a="-" data-id="${i.key}">−</button><span>${i.q}</span><button data-a="+" data-id="${i.key}">+</button></div>
+    </div>`).join("") : '<p class="empty-cart">Tu pedido está vacío. Agrega algo del menú.</p>';
+  renderUpsell(items);
+}
+
+/* ¿Y la bebida? Si el pedido no tiene bebida, el carrito ofrece agregarla sin salir */
+let upsellOpen = false;
+function renderUpsell(items) {
+  if (!$("#drinkUpsell")) { const d = document.createElement("div"); d.id = "drinkUpsell"; $("#cartItems").after(d); }
+  const box = $("#drinkUpsell");
+  const disponibles = PRODUCTS.filter(p => p.category === BEBIDAS && !p.soldOut);
+  const tieneComida = items.some(i => i.p.category !== BEBIDAS);
+  const tieneBebida = items.some(i => i.p.category === BEBIDAS || comboTieneBebida(i.p));
+  if (!items.length || !disponibles.length || !tieneComida) upsellOpen = false;
+  if (!items.length || !disponibles.length || !tieneComida || (tieneBebida && !upsellOpen)) { box.innerHTML = ""; return; }
+
+  box.innerHTML = upsellOpen ? `
+    <div class="up-box">
+      <div class="up-head"><b>🥤 Bebidas</b><button type="button" class="up-done" data-up="close">Listo</button></div>
+      <div class="up-list">${disponibles.map(p => {
+        const q = cart[p.id] || 0;
+        return `
+        <div class="up-row">
+          <div class="un"><b>${p.name}</b><small>${money(p.price)}${TASA ? " · " + bs(p.price) : ""}</small></div>
+          <div class="up-q">${q ? `<button type="button" data-up="-" data-id="${p.id}" aria-label="Quitar">−</button><span>${q}</span>` : ""}
+            <button type="button" class="plus" data-up="+" data-id="${p.id}" aria-label="Agregar ${p.name}">+</button></div>
+        </div>`;
+      }).join("")}</div>
+    </div>` : `
+    <button type="button" class="up-btn" data-up="open">🥤 ¿Y la bebida? Agregar bebida</button>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("#drinkUpsell [data-up]"); if (!b) return;
+  const a = b.dataset.up, id = b.dataset.id;
+  if (a === "open") upsellOpen = true;
+  if (a === "close") upsellOpen = false;
+  if (a === "+") cart[id] = (cart[id] || 0) + 1;
+  if (a === "-") { cart[id] = (cart[id] || 0) - 1; if (cart[id] <= 0) delete cart[id]; }
+  save(); renderCart();
+});
+$("#cartItems").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const id = b.dataset.id; cart[id] = (cart[id] || 0) + (b.dataset.a === "+" ? 1 : -1);
+  if (cart[id] <= 0) delete cart[id];
+  save(); renderCart();
+});
+
+/* ---------- Tipo de pedido: Delivery / Retiro / Comer aquí ----------
+   "Comer aquí" se crea copiando la opción de Retiro, así hereda tu mismo diseño. */
+const TIPOS = { delivery: "Delivery", retiro: "Retiro en local", comer: "Comer aquí" };
+(function agregarComerAqui() {
+  if (document.querySelector('input[name="mode"][value="comer"]')) return;
+  const radios = [...document.querySelectorAll('input[name="mode"]')];
+  const base = radios.find(r => r.value !== "delivery") || radios[radios.length - 1];
+  if (!base) return;
+  const label = base.closest("label");
+  let nuevo;
+  if (label) {
+    nuevo = label.cloneNode(true);
+    const walker = document.createTreeWalker(nuevo, NodeFilter.SHOW_TEXT);
+    let cambiado = false, t;
+    while ((t = walker.nextNode())) {
+      if (t.nodeValue.trim()) {
+        if (!cambiado) { t.nodeValue = t.nodeValue.replace(/\S.*\S|\S/s, "Comer aquí"); cambiado = true; }
+        else t.nodeValue = "";
       }
-    } else await addDoc(collection(db, col), { image: "", ...data, createdAt: serverTimestamp() });
-    resetForm(); toast(cat === DELIV ? "Delivery guardado: ya se ofrece al pedir" : cat === ADIC ? "Adicional guardado" : cat === COMBOS ? "Combo guardado: ya aparece en la tienda" : "Producto guardado: ya aparece en la tienda");
-  } catch (err) { alert("No se pudo guardar: " + err.message); }
-  btn.disabled = false;
-};
-$("#plist").addEventListener("click", e => {
-  const b = e.target.closest("button[data-a]"); if (!b) return;
-  const p = products.find(x => x.id === b.dataset.id);
-  if (b.dataset.a === "sold") updateDoc(doc(db, p.col, p.id), { soldOut: !p.soldOut }).catch(x => toast(x.message));
-  if (b.dataset.a === "del" && confirm(`¿Eliminar "${p.name}"?`)) deleteDoc(doc(db, p.col, p.id)).catch(x => toast(x.message));
-  if (b.dataset.a === "edit") {
-    const f = F(); f.pid.value = p.id; f.n.value = p.name; f.cat.value = p.category; f.price.value = p.price;
-    f.desc.value = p.description || ""; f.badge.value = p.badge || ""; f.sold.checked = !!p.soldOut; f.act.checked = p.active !== false;
-    f.extras.checked = !!p.extras;
-    comboSel = Object.fromEntries((p.items || []).map(i => [i.id, i.qty]));
-    $("#preview").hidden = true;
-    if (p.image) { $("#preview").src = p.image; $("#preview").hidden = false; }
-    camposSegunCategoria();
-    $("#ptitle").textContent = "Editando: " + p.name; $("#cancelEdit").hidden = false;
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    if (!cambiado) nuevo.append(" Comer aquí");
+    label.after(nuevo);
+  } else {
+    nuevo = document.createElement("label");
+    nuevo.innerHTML = '<input type="radio" name="mode"> Comer aquí';
+    base.parentElement.after(nuevo);
   }
+  const input = nuevo.querySelector('input[name="mode"]');
+  input.value = "comer"; input.checked = false; input.removeAttribute("id");
+})();
+document.addEventListener("change", e => {
+  if (e.target.name !== "mode") return;
+  const d = e.target.value === "delivery";
+  $("#address").hidden = !d; $("#address").required = d;
 });
+/* Lista de zonas: aparece debajo de la dirección cuando el cliente elige Delivery */
+function renderZonas() {
+  const addr = $("#address"); if (!addr) return;
+  if (!$("#zonas")) { const d = document.createElement("div"); d.id = "zonas"; addr.after(d); }
+  const box = $("#zonas");
+  if (modoActual() !== "delivery" || !ZONAS.length) { box.innerHTML = ""; box.hidden = true; box.classList.remove("falta"); return; }
+  box.hidden = false;
+  box.innerHTML = `
+    <p class="z-t">Elige tu zona de delivery</p>
+    <div class="z-list">${ZONAS.map(z => `
+      <label class="${z.id === zonaSel ? "on" : ""}"><input type="radio" name="zona" value="${z.id}" ${z.id === zonaSel ? "checked" : ""}>
+        <span class="zn">${z.name}</span>
+        <span class="zp">+${money(z.price)}${TASA ? `<small>${bs(z.price)}</small>` : ""}</span></label>`).join("")}
+    </div>
+    <p class="z-err">Elige una zona para calcular el delivery.</p>`;
+}
+document.addEventListener("change", e => {
+  if (e.target.name === "zona") { zonaSel = e.target.value; $("#zonas")?.classList.remove("falta"); renderCart(); }
+  if (e.target.name === "mode") renderCart();
+});
+$("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
+
+const drawer = open => {
+  $("#drawer").classList.toggle("open", open);
+  $("#drawer").setAttribute("aria-hidden", !open);
+  $("#overlay").hidden = !open;
+};
+$("#openCart").onclick = () => drawer(true);
+$("#closeCart").onclick = $("#overlay").onclick = () => drawer(false);
+document.addEventListener("keydown", e => e.key === "Escape" && drawer(false));
+
+/* Enviar pedido: se guarda en Firestore y se abre WhatsApp */
+$("#checkout").addEventListener("submit", async e => {
+  e.preventDefault();
+  const items = cartItems(); if (!items.length) return;
+  const f = new FormData(e.target);
+  const m = f.get("mode");
+  const mode = m === "delivery" ? "delivery" : m === "comer" ? "comer" : "retiro";
+  const zona = envio();
+  if (mode === "delivery" && ZONAS.length && !zona) {
+    $("#zonas")?.classList.add("falta");
+    $("#zonas")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return toast("Elige tu zona de delivery");
+  }
+  const lineas = items.map(i => ({ id: i.key, name: i.name, price: i.price, qty: i.q, ...(i.detail ? { detail: i.detail } : {}) }));
+  if (zona) lineas.push({ id: "delivery", name: `Delivery (${zona.name})`, price: Number(zona.price), qty: 1 });
+  const total = lineas.reduce((s, i) => s + i.qty * i.price, 0);
+  const number = String(Date.now()).slice(-6);
+  const order = {
+    number, status: "nuevo", total, delivery: mode,
+    tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
+    customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
+    notes: f.get("notes") || "",
+    items: lineas,
+    createdAt: serverTimestamp()
+  };
+  const msg = [
+    `*Nuevo pedido #${number} - ${business}*`, "",
+    ...order.items.map(i => `• ${i.qty} x ${i.name} — ${money(i.qty * i.price)}${i.detail ? `\n   (${i.detail})` : ""}`),
+    `*Total: ${money(total)}*`,
+    ...(TASA ? [`*Total en bolívares: ${bs(total)}*`] : []), "",
+    `Nombre: ${order.customer.name}`, `Teléfono: ${order.customer.phone}`,
+    `Tipo: ${TIPOS[mode]}`,
+    ...(mode === "delivery" ? [`Dirección: ${order.customer.address}`] : []),
+    order.notes ? `Notas: ${order.notes}` : ""
+  ].join("\n");
+  const w = window.open("", "_blank");           // se abre antes del await para evitar bloqueos
+  const btn = e.target.querySelector(".send"); btn.disabled = true;
+  try { await addDoc(collection(db, ORDERS), order); }
+  catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
+  const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
+  w ? (w.location.href = url) : (location.href = url);
+  cart = {}; zonaSel = null; save(); e.target.reset(); renderCart(); drawer(false); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
+  toast(`Pedido #${number} enviado`);
+});
+
+function toast(t) {
+  const el = $("#toast"); el.textContent = t; el.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 2000);
+}
+renderCart();
