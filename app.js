@@ -9,6 +9,7 @@ let PRODUCTS = [], ADDONS = [], category = "Todos", term = "", cart = {};
 
 const BEBIDAS = "Bebidas", COMBOS = "Combos";
 const ADICIONALES = "adicionales";            // colección de adicionales (no se muestran como productos)
+const ZONAS_DELIVERY = "dc_delivery";         // zonas de delivery con su precio (se cargan en el panel)
 
 /* Tasa en bolívares: la que aplicas desde el panel. Bs. = $ × tasa */
 let TASA = 0;
@@ -79,6 +80,23 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   /* Detalle de cada línea del carrito (adicionales / contenido del combo) */
   .line .det{display:block;font-size:12px;opacity:.65;margin-top:1px}
 
+  /* Zonas de delivery en el formulario del pedido */
+  #zonas{margin:10px 0 4px}
+  #zonas *{box-sizing:border-box}
+  #zonas .z-t{font-size:13px;font-weight:600;margin:0 0 6px}
+  #zonas .z-list{border:1px solid rgba(0,0,0,.12);border-radius:12px;overflow:hidden;background:#fff}
+  #zonas label{display:flex;align-items:center;gap:10px;padding:11px 12px;border-top:1px solid rgba(0,0,0,.07);cursor:pointer;margin:0;font-weight:400}
+  #zonas label:first-child{border-top:0}
+  #zonas label.on{background:rgba(0,0,0,.04)}
+  #zonas input{width:18px;height:18px;margin:0;flex:none;accent-color:#0b0b0b}
+  #zonas .zn{flex:1;min-width:0;overflow-wrap:anywhere}
+  #zonas .zp{text-align:right;white-space:nowrap;font-weight:600;font-size:14px}
+  #zonas .zp small{display:block;font-weight:400;font-size:11px;opacity:.6}
+  #zonas.falta .z-list{border-color:#b3261e;box-shadow:0 0 0 2px rgba(179,38,30,.15)}
+  #zonas .z-err{color:#b3261e;font-size:12px;margin:6px 0 0;display:none}
+  #zonas.falta .z-err{display:block}
+  #envioNota{display:block;font-size:12px;opacity:.7;font-weight:400;margin-top:2px}
+
   /* Hoja de adicionales */
   #addonSheet{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45);padding:0}
   #addonSheet[hidden]{display:none}
@@ -133,6 +151,17 @@ onSnapshot(collection(db, ADICIONALES), snap => {
   ADDONS = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
   renderCart();
 }, err => console.warn("Adicionales no disponibles:", err));
+
+/* Zonas de delivery (ej: "Zona Centro $2"): el cliente elige una y se suma al total */
+let ZONAS = [], zonaSel = null;
+onSnapshot(collection(db, ZONAS_DELIVERY), snap => {
+  ZONAS = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => Number(a.price) - Number(b.price) || String(a.name).localeCompare(String(b.name)));
+  if (zonaSel && !ZONAS.some(z => z.id === zonaSel)) zonaSel = null;
+  renderCart();
+}, err => console.warn("Zonas de delivery no disponibles:", err));
+const modoActual = () => document.querySelector('input[name="mode"]:checked')?.value;
+const envio = () => modoActual() === "delivery" ? ZONAS.find(z => z.id === zonaSel) || null : null;
 
 /* ---------- Combos ---------- */
 const incluye = p => (p.items || []).map(i => `${i.qty} ${i.name}`).join(", ");
@@ -307,11 +336,15 @@ const cartItems = () => Object.entries(cart).map(([k, q]) => lineaDe(k, q)).filt
 function renderCart() {
   const items = cartItems();
   const count = items.reduce((s, i) => s + i.q, 0);
-  const total = items.reduce((s, i) => s + i.q * i.price, 0);
+  const zona = envio();
+  const total = items.reduce((s, i) => s + i.q * i.price, 0) + (count && zona ? Number(zona.price) : 0);
   $("#cartCount").textContent = count;
   $("#total").textContent = money(total);
   if (!$("#totalBs")) { const s = document.createElement("small"); s.id = "totalBs"; $("#total").after(s); }
   $("#totalBs").textContent = TASA && total ? bs(total) : "";
+  if (!$("#envioNota")) { const s = document.createElement("small"); s.id = "envioNota"; $("#totalBs").after(s); }
+  $("#envioNota").textContent = count && zona ? `Incluye delivery (${zona.name}): ${money(zona.price)}` : "";
+  renderZonas();
   $("#checkout").style.display = count ? "" : "none";
   $("#cartItems").innerHTML = count ? items.map(i => `
     <div class="line">
@@ -398,6 +431,26 @@ document.addEventListener("change", e => {
   const d = e.target.value === "delivery";
   $("#address").hidden = !d; $("#address").required = d;
 });
+/* Lista de zonas: aparece debajo de la dirección cuando el cliente elige Delivery */
+function renderZonas() {
+  const addr = $("#address"); if (!addr) return;
+  if (!$("#zonas")) { const d = document.createElement("div"); d.id = "zonas"; addr.after(d); }
+  const box = $("#zonas");
+  if (modoActual() !== "delivery" || !ZONAS.length) { box.innerHTML = ""; box.hidden = true; box.classList.remove("falta"); return; }
+  box.hidden = false;
+  box.innerHTML = `
+    <p class="z-t">Elige tu zona de delivery</p>
+    <div class="z-list">${ZONAS.map(z => `
+      <label class="${z.id === zonaSel ? "on" : ""}"><input type="radio" name="zona" value="${z.id}" ${z.id === zonaSel ? "checked" : ""}>
+        <span class="zn">${z.name}</span>
+        <span class="zp">+${money(z.price)}${TASA ? `<small>${bs(z.price)}</small>` : ""}</span></label>`).join("")}
+    </div>
+    <p class="z-err">Elige una zona para calcular el delivery.</p>`;
+}
+document.addEventListener("change", e => {
+  if (e.target.name === "zona") { zonaSel = e.target.value; $("#zonas")?.classList.remove("falta"); renderCart(); }
+  if (e.target.name === "mode") renderCart();
+});
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
 
 const drawer = open => {
@@ -416,14 +469,22 @@ $("#checkout").addEventListener("submit", async e => {
   const f = new FormData(e.target);
   const m = f.get("mode");
   const mode = m === "delivery" ? "delivery" : m === "comer" ? "comer" : "retiro";
-  const total = items.reduce((s, i) => s + i.q * i.price, 0);
+  const zona = envio();
+  if (mode === "delivery" && ZONAS.length && !zona) {
+    $("#zonas")?.classList.add("falta");
+    $("#zonas")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return toast("Elige tu zona de delivery");
+  }
+  const lineas = items.map(i => ({ id: i.key, name: i.name, price: i.price, qty: i.q, ...(i.detail ? { detail: i.detail } : {}) }));
+  if (zona) lineas.push({ id: "delivery", name: `Delivery (${zona.name})`, price: Number(zona.price), qty: 1 });
+  const total = lineas.reduce((s, i) => s + i.qty * i.price, 0);
   const number = String(Date.now()).slice(-6);
   const order = {
     number, status: "nuevo", total, delivery: mode,
     tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
     customer: { name: f.get("name"), phone: f.get("phone"), address: mode === "delivery" ? f.get("address") : "" },
     notes: f.get("notes") || "",
-    items: items.map(i => ({ id: i.key, name: i.name, price: i.price, qty: i.q, ...(i.detail ? { detail: i.detail } : {}) })),
+    items: lineas,
     createdAt: serverTimestamp()
   };
   const msg = [
@@ -442,7 +503,7 @@ $("#checkout").addEventListener("submit", async e => {
   catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
   const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
   w ? (w.location.href = url) : (location.href = url);
-  cart = {}; save(); renderCart(); drawer(false); e.target.reset(); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
+  cart = {}; zonaSel = null; save(); e.target.reset(); renderCart(); drawer(false); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
   toast(`Pedido #${number} enviado`);
 });
 
