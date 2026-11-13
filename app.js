@@ -453,6 +453,27 @@ document.addEventListener("change", e => {
 });
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
 
+/* Carrito desplazable: con muchas zonas o productos, el panel del pedido completo se desliza con el dedo.
+   Se quitan los altos fijos y "overflow" de los contenedores internos, y el desplazamiento queda en #drawer. */
+(function carritoDesplazable() {
+  const d = $("#drawer"); if (!d) return;
+  const destinos = [$("#cartItems"), $("#checkout")].filter(Boolean);
+  const cadena = new Set();
+  destinos.forEach(el => { for (let x = el.parentElement; x && x !== d; x = x.parentElement) cadena.add(x); });
+  [...cadena, ...destinos].forEach(el => {
+    const cs = getComputedStyle(el);
+    if (cs.display.includes("flex") && cs.flexDirection.startsWith("column")) el.style.display = "block";
+    el.style.overflow = "visible"; el.style.maxHeight = "none"; el.style.flex = "none";
+    if (el !== $("#cartItems") && el !== $("#checkout")) el.style.height = "auto";
+  });
+  const cs = getComputedStyle(d);
+  if (cs.display.includes("flex") && cs.flexDirection.startsWith("column")) d.style.display = "block";
+  d.style.overflowY = "auto"; d.style.overscrollBehavior = "contain"; d.style.webkitOverflowScrolling = "touch";
+  d.style.maxHeight = "100dvh"; d.style.boxSizing = "border-box";
+  d.style.paddingBottom = "calc(28px + env(safe-area-inset-bottom, 0px))";
+  [...d.children].forEach(c => { c.style.flexShrink = "0"; });
+})();
+
 const drawer = open => {
   $("#drawer").classList.toggle("open", open);
   $("#drawer").setAttribute("aria-hidden", !open);
