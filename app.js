@@ -480,6 +480,33 @@ document.addEventListener("click", e => {
   if (!e.target.closest('#zonas [data-zona="cambiar"]')) return;
   zonasAbiertas = true; renderZonas();
 });
+/* Teléfono: solo dígitos y exactamente 11, formato venezolano (ej: 04121234567) */
+const TEL_OK = /^0\d{10}$/;
+const MSG_TEL = "Escribe tu teléfono de 11 dígitos, ej: 04121234567";
+const telInput = document.querySelector('#checkout [name="phone"]');
+function validarTel() {
+  if (!telInput) return true;
+  const ok = TEL_OK.test(telInput.value);
+  telInput.setCustomValidity(ok || !telInput.value ? "" : MSG_TEL);
+  return ok;
+}
+if (telInput) {
+  telInput.type = "tel";
+  telInput.inputMode = "numeric";
+  telInput.autocomplete = "tel-national";
+  telInput.maxLength = 11;
+  telInput.required = true;
+  if (!telInput.placeholder || /tel/i.test(telInput.placeholder)) telInput.placeholder = "Tu teléfono (ej: 04121234567)";
+  telInput.addEventListener("input", () => {
+    const limpio = telInput.value.replace(/\D/g, "").slice(0, 11);
+    if (limpio !== telInput.value) telInput.value = limpio;
+    validarTel();
+  });
+  telInput.addEventListener("invalid", () => {
+    if (telInput.validity.valueMissing) telInput.setCustomValidity(MSG_TEL);
+  });
+}
+
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
 
 /* Carrito desplazable: con muchas zonas o productos, el panel del pedido completo se desliza con el dedo.
@@ -519,6 +546,10 @@ $("#checkout").addEventListener("submit", async e => {
   const f = new FormData(e.target);
   const m = f.get("mode");
   const mode = m === "delivery" ? "delivery" : m === "comer" ? "comer" : "retiro";
+  if (!validarTel()) {
+    telInput.setCustomValidity(MSG_TEL); telInput.reportValidity();
+    return toast(MSG_TEL);
+  }
   const zona = envio();
   if (mode === "delivery" && ZONAS.length && !zona) {
     $("#zonas")?.classList.add("falta");
