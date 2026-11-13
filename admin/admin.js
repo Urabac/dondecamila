@@ -19,8 +19,8 @@ import("/tasa.js").then(m => {
 const bsPedido = (o, usd) => o.tasa ? " · " + formatoBs(aBolivares(usd, o.tasa)) : "";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* Categorías del panel: las de la tienda + "Adicionales" (estos no se muestran como productos en la tienda) */
-const BEBIDAS = "Bebidas", COMBOS = "Combos", ADIC = "Adicionales";
-const CATS = { ...COLLECTIONS, [ADIC]: "adicionales" };
+const BEBIDAS = "Bebidas", COMBOS = "Combos", ADIC = "Adicionales", DELIV = "Delivery";
+const CATS = { ...COLLECTIONS, [ADIC]: "adicionales", [DELIV]: "dc_delivery" };
 const LABEL = { nuevo: "Pendiente de pago", confirmado: "Confirmado", entregado: "Entregado", cancelado: "Cancelado" };
 let orders = [], products = [], unsubs = [], first = true; const byCol = {};
 
@@ -152,8 +152,7 @@ td{padding:3px 0;vertical-align:top}td:last-child{text-align:right;white-space:n
 Tipo: <b>${kind(o)}</b>${o.delivery === "delivery" ? `<br>Dirección: ${esc(o.customer?.address)}` : ""}</div><hr>
 <table>${(o.items || []).map(i => `<tr><td>${esc(i.qty)} x ${esc(i.name)}${i.detail ? `<br>&nbsp;&nbsp;(${esc(i.detail)})` : ""}<br>&nbsp;&nbsp;${money(i.price)} c/u</td><td>${money(i.qty * i.price)}</td></tr>`).join("")}
 <tr class="t"><td>TOTAL</td><td>${money(o.total)}</td></tr>
-${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, o.tasa))}</td></tr>
-<tr><td>Tasa</td><td>${formatoBs(o.tasa)}</td></tr>` : ""}</table>
+${o.tasa ? `<tr class="t"><td>TOTAL Bs.</td><td>${formatoBs(aBolivares(o.total, o.tasa))}</td></tr>` : ""}</table>
 ${o.notes ? `<hr><div>Notas: ${esc(o.notes)}</div>` : ""}<hr><div class="c">PAGO CONFIRMADO<br>¡Gracias por tu compra!</div></body></html>`);
   w.document.close();
   setTimeout(() => { w.focus(); w.print(); }, 600);
@@ -231,7 +230,6 @@ function ticketBytes(o) {
   fila("TOTAL", money(o.total));
   if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
   tamaño(0); negrita(false);
-  if (o.tasa) fila("Tasa", formatoBs(o.tasa));
   if (o.notes) { sep(); bloque("Notas: " + o.notes); }
   sep();
   centro(true); negrita(true); ln("PAGO CONFIRMADO"); negrita(false); ln("¡Gracias por tu compra!"); centro(false);
@@ -268,7 +266,6 @@ function ticketTexto(o) {
   sep();
   fila("TOTAL", money(o.total));
   if (o.tasa) fila("TOTAL Bs.", formatoBs(aBolivares(o.total, o.tasa)));
-  if (o.tasa) fila("Tasa", formatoBs(o.tasa));
   if (o.notes) { sep(); bloque("Notas: " + o.notes); }
   sep();
   centro("PAGO CONFIRMADO");
@@ -314,7 +311,7 @@ const toData = file => new Promise((ok, fail) => {
 });
 const F = () => $("#pform").elements;
 // Orden del selector: productos normales primero; luego Combos, Bebidas y Adicionales
-const ESPECIALES = [COMBOS, BEBIDAS, ADIC];
+const ESPECIALES = [COMBOS, BEBIDAS, ADIC, DELIV];
 F().cat.innerHTML = [...Object.keys(CATS).filter(c => !ESPECIALES.includes(c)), ...ESPECIALES.filter(c => CATS[c])]
   .map(c => `<option>${esc(c)}</option>`).join("");
 
@@ -323,15 +320,15 @@ F().cat.innerHTML = [...Object.keys(CATS).filter(c => !ESPECIALES.includes(c)), 
    - Adicionales: solo nombre y precio
    - Combos: todo + elegir los productos que incluye */
 function camposSegunCategoria() {
-  const c = F().cat.value, isB = c === BEBIDAS, isA = c === ADIC, isC = c === COMBOS;
+  const c = F().cat.value, isB = c === BEBIDAS, isD = c === DELIV, isA = c === ADIC || isD, isC = c === COMBOS;
   const ocultar = (el, h) => el.closest("label").hidden = h;
   [F().desc, F().badge, F().img].forEach(el => ocultar(el, isB || isA));
   [F().sold, F().act].forEach(el => ocultar(el, isA));
   ocultar(F().extras, isB || isA);
   $("#comboBox").hidden = !isC;
   if (isB || isA) $("#preview").hidden = true;
-  F().n.placeholder = isB ? "Ej: Pepsi-Cola 2 litros" : isA ? "Ej: Papas extra" : isC ? "Ej: Combo Familiar" : "";
-  $("#saveBtn").textContent = isA ? "Guardar adicional" : isC ? "Guardar combo" : "Guardar producto";
+  F().n.placeholder = isB ? "Ej: Pepsi-Cola 2 litros" : isD ? "Ej: Zona Centro" : isA ? "Ej: Papas extra" : isC ? "Ej: Combo Familiar" : "";
+  $("#saveBtn").textContent = isD ? "Guardar delivery" : isA ? "Guardar adicional" : isC ? "Guardar combo" : "Guardar producto";
   if (isC) renderComboPick();
 }
 F().cat.onchange = camposSegunCategoria;
@@ -340,7 +337,7 @@ F().cat.onchange = camposSegunCategoria;
 let comboSel = {};   // { idProducto: cantidad }
 function renderComboPick() {
   const box = $("#comboPick"); if (!box || $("#comboBox").hidden) return;
-  const elegibles = products.filter(p => p.category !== COMBOS && p.category !== ADIC)
+  const elegibles = products.filter(p => p.category !== COMBOS && p.category !== ADIC && p.category !== DELIV)
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   box.innerHTML = elegibles.length ? elegibles.map(p => {
     const q = comboSel[p.id] || 0;
@@ -367,7 +364,7 @@ function renderProducts() {
     <div class="prow">${p.image ? `<img src="${p.image}" alt="">` : '<div class="ph"></div>'}
       <div class="t"><b>${esc(p.name)}</b> <span class="pill">${esc(p.category)}</span>${p.soldOut ? '<span class="pill">Agotado</span>' : ""}${p.active === false ? '<span class="pill">Oculto</span>' : ""}${p.extras ? '<span class="pill">+ Adicionales</span>' : ""}<br><small>${money(p.price)}${TASA ? " · " + formatoBs(aBolivares(p.price, TASA)) : ""}${p.items?.length ? " · Incluye: " + esc(p.items.map(i => i.qty + " " + i.name).join(", ")) : ""}</small></div>
       <div class="a"><button class="btn ghost" data-a="edit" data-id="${p.id}">Editar</button>
-        ${p.category === ADIC ? "" : `<button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>`}
+        ${p.category === ADIC || p.category === DELIV ? "" : `<button class="btn ghost" data-a="sold" data-id="${p.id}">${p.soldOut ? "Marcar disponible" : "Marcar agotado"}</button>`}
         <button class="btn red" data-a="del" data-id="${p.id}">Eliminar</button></div></div>`).join("") : '<p class="mute">Aún no hay productos. Sube el primero con el formulario de arriba.</p>';
 }
 function resetForm() {
@@ -390,7 +387,7 @@ $("#pform").onsubmit = async e => {
     extras: f.extras.checked
   };
   try {
-    if (cat === ADIC) data = { name: data.name, category: cat, price: data.price };
+    if (cat === ADIC || cat === DELIV) data = { name: data.name, category: cat, price: data.price };
     else if (cat === BEBIDAS) Object.assign(data, { description: "", badge: "", image: "", extras: false });
     else if (f.img.files[0]) data.image = await toData(f.img.files[0]);
     if (cat === COMBOS) {
@@ -408,7 +405,7 @@ $("#pform").onsubmit = async e => {
         await deleteDoc(doc(db, old.col, id));
       }
     } else await addDoc(collection(db, col), { image: "", ...data, createdAt: serverTimestamp() });
-    resetForm(); toast(cat === ADIC ? "Adicional guardado" : cat === COMBOS ? "Combo guardado: ya aparece en la tienda" : "Producto guardado: ya aparece en la tienda");
+    resetForm(); toast(cat === DELIV ? "Delivery guardado: ya se ofrece al pedir" : cat === ADIC ? "Adicional guardado" : cat === COMBOS ? "Combo guardado: ya aparece en la tienda" : "Producto guardado: ya aparece en la tienda");
   } catch (err) { alert("No se pudo guardar: " + err.message); }
   btn.disabled = false;
 };
