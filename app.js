@@ -95,6 +95,11 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   #zonas.falta .z-list{border-color:#b3261e;box-shadow:0 0 0 2px rgba(179,38,30,.15)}
   #zonas .z-err{color:#b3261e;font-size:12px;margin:6px 0 0;display:none}
   #zonas.falta .z-err{display:block}
+  #zonas .z-sel{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff}
+  #zonas .z-sel .zn{flex:1;min-width:0}
+  #zonas .z-sel .zn b{display:block;font-weight:600;overflow-wrap:anywhere}
+  #zonas .z-sel .zn small{font-size:12px;opacity:.65}
+  #zonas .z-cambiar{flex:none;border:1px solid rgba(0,0,0,.2);background:#fff;color:#0b0b0b;border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
   #envioNota{display:block;font-size:12px;opacity:.7;font-weight:400;margin-top:2px}
 
   /* Hoja de adicionales */
@@ -153,7 +158,7 @@ onSnapshot(collection(db, ADICIONALES), snap => {
 }, err => console.warn("Adicionales no disponibles:", err));
 
 /* Zonas de delivery (ej: "Zona Centro $2"): el cliente elige una y se suma al total */
-let ZONAS = [], zonaSel = null;
+let ZONAS = [], zonaSel = null, zonasAbiertas = false;
 onSnapshot(collection(db, ZONAS_DELIVERY), snap => {
   ZONAS = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => Number(a.price) - Number(b.price) || String(a.name).localeCompare(String(b.name)));
@@ -438,6 +443,18 @@ function renderZonas() {
   const box = $("#zonas");
   if (modoActual() !== "delivery" || !ZONAS.length) { box.innerHTML = ""; box.hidden = true; box.classList.remove("falta"); return; }
   box.hidden = false;
+  const elegida = ZONAS.find(z => z.id === zonaSel);
+  // Ya eligió: se muestra solo su destino y el botón para cambiarlo
+  if (elegida && !zonasAbiertas) {
+    box.classList.remove("falta");
+    box.innerHTML = `
+    <p class="z-t">Destino del delivery</p>
+    <div class="z-sel">
+      <span class="zn"><b>📍 ${elegida.name}</b><small>+${money(elegida.price)}${TASA ? `<br>${bs(elegida.price)}` : ""}</small></span>
+      <button type="button" class="z-cambiar" data-zona="cambiar">Cambiar destino</button>
+    </div>`;
+    return;
+  }
   box.innerHTML = `
     <p class="z-t">Elige tu zona de delivery</p>
     <div class="z-list">${ZONAS.map(z => `
@@ -448,8 +465,12 @@ function renderZonas() {
     <p class="z-err">Elige una zona para calcular el delivery.</p>`;
 }
 document.addEventListener("change", e => {
-  if (e.target.name === "zona") { zonaSel = e.target.value; $("#zonas")?.classList.remove("falta"); renderCart(); }
+  if (e.target.name === "zona") { zonaSel = e.target.value; zonasAbiertas = false; $("#zonas")?.classList.remove("falta"); renderCart(); }
   if (e.target.name === "mode") renderCart();
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest('#zonas [data-zona="cambiar"]')) return;
+  zonasAbiertas = true; renderZonas();
 });
 $("#clearCart").onclick = () => { cart = {}; save(); renderCart(); };
 
@@ -524,7 +545,7 @@ $("#checkout").addEventListener("submit", async e => {
   catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
   const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
   w ? (w.location.href = url) : (location.href = url);
-  cart = {}; zonaSel = null; save(); e.target.reset(); renderCart(); drawer(false); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
+  cart = {}; zonaSel = null; zonasAbiertas = false; save(); e.target.reset(); renderCart(); drawer(false); $("#address").hidden = true; $("#address").required = false; btn.disabled = false;
   toast(`Pedido #${number} enviado`);
 });
 
