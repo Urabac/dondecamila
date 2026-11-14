@@ -1,5 +1,5 @@
 import { db, SETTINGS, COLLECTIONS, ORDERS } from "./firebase-config.js";
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { escucharTasa, formatoBs, aBolivares } from "./tasa.js";
 
 const $ = s => document.querySelector(s);
@@ -539,6 +539,20 @@ $("#openCart").onclick = () => drawer(true);
 $("#closeCart").onclick = $("#overlay").onclick = () => drawer(false);
 document.addEventListener("keydown", e => e.key === "Escape" && drawer(false));
 
+/* Número de pedido diario: #1, #2, #3… y vuelve a #1 cada día (hora de Venezuela).
+   Un contador por día en Firestore (dc_contadores/AAAA-MM-DD) se aumenta de forma segura,
+   así dos clientes que piden al mismo tiempo nunca reciben el mismo número. */
+const diaVE = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Caracas", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+async function siguienteNumero(dia) {
+  const ref = doc(db, "dc_contadores", dia);
+  return runTransaction(db, async t => {
+    const snap = await t.get(ref);
+    const n = (snap.exists() ? Number(snap.data().n) || 0 : 0) + 1;
+    t.set(ref, { n });
+    return n;
+  });
+}
+
 /* Enviar pedido: se guarda en Firestore y se abre WhatsApp */
 $("#checkout").addEventListener("submit", async e => {
   e.preventDefault();
@@ -559,9 +573,14 @@ $("#checkout").addEventListener("submit", async e => {
   const lineas = items.map(i => ({ id: i.key, name: i.name, price: i.price, qty: i.q, ...(i.detail ? { detail: i.detail } : {}) }));
   if (zona) lineas.push({ id: "delivery", name: `Delivery (${zona.name})`, price: Number(zona.price), qty: 1 });
   const total = lineas.reduce((s, i) => s + i.qty * i.price, 0);
-  const number = String(Date.now()).slice(-6);
+  const w = window.open("", "_blank");           // se abre antes de esperar a Firestore para evitar bloqueos
+  const btn = e.target.querySelector(".send"); btn.disabled = true;
+  const dia = diaVE();
+  let number;
+  try { number = String(await siguienteNumero(dia)); }
+  catch (err) { console.error("Contador diario no disponible:", err); number = String(Date.now()).slice(-6); }
   const order = {
-    number, status: "nuevo", total, delivery: mode,
+    number, dia, status: "nuevo", total, delivery: mode,
     tasa: TASA || null, totalBs: TASA ? Math.round(aBolivares(total, TASA) * 100) / 100 : null,
     customer: { name: f.get("name"), phone: f.get("phone"), address: mode !== "delivery" ? "" : zona ? zona.name : (f.get("address") || "") },
     notes: f.get("notes") || "",
@@ -578,8 +597,6 @@ $("#checkout").addEventListener("submit", async e => {
     ...(mode === "delivery" ? [`${zona ? "Destino" : "Dirección"}: ${order.customer.address}`] : []),
     order.notes ? `Notas: ${order.notes}` : ""
   ].join("\n");
-  const w = window.open("", "_blank");           // se abre antes del await para evitar bloqueos
-  const btn = e.target.querySelector(".send"); btn.disabled = true;
   try { await addDoc(collection(db, ORDERS), order); }
   catch (err) { console.error(err); }             // aunque falle, el pedido llega por WhatsApp
   const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
