@@ -95,7 +95,8 @@ function renderOrders() {
   const [desde, hasta] = rangoFechas($("#range").value);
   const list = orders.filter(o => {
     if (f && o.status !== f) return false;
-    if (q && !String(o.number || "").includes(q)) return false;
+    // Números diarios (#1, #2…): búsqueda exacta; números largos de pedidos viejos: por coincidencia
+    if (q && !(q.length <= 4 ? String(o.number || "") === q : String(o.number || "").includes(q))) return false;
     const d = o.createdAt?.toDate?.();
     if (desde && (!d || d < desde)) return false;
     if (hasta && (!d || d >= hasta)) return false;
