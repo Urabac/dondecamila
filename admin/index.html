@@ -51,6 +51,35 @@ main{max-width:1100px;margin:0 auto;padding:24px}
 .prow img,.prow .ph{width:64px;height:64px;border-radius:8px;object-fit:cover;background:#222}
 .prow .t{flex:1}.prow small{color:#777}.prow .a{display:flex;gap:6px;flex-wrap:wrap}
 .pill{font-size:11px;background:#eee;border-radius:999px;padding:2px 8px;margin-left:6px}
+/* Pedido manual */
+#manualBtn{white-space:nowrap}
+.mm{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.mm[hidden]{display:none!important}
+.mm-box{background:#fff;border-radius:14px;width:min(640px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden}
+.mm-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #eee}
+.mm-head h2{font-size:18px}
+.mm-x{background:none;border:0;font-size:26px;line-height:1;padding:0 4px;color:#555}
+.mm-body{padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.mm-body > *{flex-shrink:0}
+.mm-body label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#555}
+.mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mm-tipo{display:flex;gap:8px;flex-wrap:wrap}
+.mm-tipo label{flex-direction:row!important;align-items:center;gap:6px!important;font-size:14px!important;color:#0b0b0b!important;border:1px solid #ddd8cf;border-radius:999px;padding:7px 14px;cursor:pointer}
+.mm-tipo label:has(input:checked){background:#0b0b0b;color:#fff!important;border-color:#0b0b0b}
+.mm-tipo input{width:auto;margin:0}
+#mProds{border:1px solid #ddd8cf;border-radius:8px;max-height:min(300px,45dvh);min-height:120px;overflow-y:auto}
+.mp{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid #f0ede7;font-size:14px}
+.mp:first-child{border-top:0}
+.mp.on{background:#f7f5f0}
+.mp small{display:block;color:#888;font-size:12px}
+.mm-foot{border-top:1px solid #eee;padding:14px 20px;display:flex;flex-direction:column;gap:10px;background:#faf9f6}
+#mResumen{font-size:14px;line-height:1.5}
+#mResumen .tt{font-size:18px;font-weight:700}
+.mm-foot .chk{display:flex;align-items:center;gap:8px;font-size:14px}
+.mm-foot .chk input{width:auto;margin:0}
+.mm-btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.pill.man{background:#e8eefc;color:#1f4fb3}
+@media(max-width:600px){.mm{padding:0;align-items:flex-end}.mm-box{max-height:100dvh;border-radius:14px 14px 0 0}.mm-grid{grid-template-columns:1fr}.mm-btns .btn{flex:1}}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0b0b0b;color:#fff;padding:12px 20px;border-radius:999px;opacity:0;transition:.25s;pointer-events:none}
 #toast.show{opacity:1}
 /* Filtros de pedidos */
@@ -101,6 +130,7 @@ main{max-width:1100px;margin:0 auto;padding:24px}
     <section id="orders">
       <div class="bar" style="flex-wrap:wrap"><h2>Pedidos</h2>
         <div class="ofil">
+        <button class="btn" id="manualBtn" type="button">+ Pedido manual</button>
         <input id="q" type="search" inputmode="numeric" placeholder="Buscar # de pedido">
         <select id="range"><option value="hoy">Hoy</option><option value="ayer">Ayer</option><option value="semana">Esta semana</option><option value="mes">Este mes</option><option value="">Todos</option></select>
         <select id="filter"><option value="">Todos</option><option value="nuevo">Pendientes de pago</option><option value="confirmado">Confirmados</option><option value="entregado">Entregados</option><option value="cancelado">Cancelados</option></select>
@@ -131,6 +161,34 @@ main{max-width:1100px;margin:0 auto;padding:24px}
       <div id="plist"></div>
     </section>
   </main>
+</div>
+<div id="manual" class="mm" hidden>
+  <form id="mform" class="mm-box" novalidate>
+    <div class="mm-head"><h2>Pedido manual</h2><button type="button" class="mm-x" id="mCerrar" aria-label="Cerrar">×</button></div>
+    <div class="mm-body">
+      <div class="mm-grid">
+        <label>Nombre del cliente<input name="name" placeholder="Ej: María" autocomplete="off"></label>
+        <label>Teléfono (opcional)<input name="phone" type="tel" inputmode="numeric" placeholder="04121234567" autocomplete="off"></label>
+      </div>
+      <div class="mm-tipo">
+        <label><input type="radio" name="mode" value="comer" checked> Comer aquí</label>
+        <label><input type="radio" name="mode" value="retiro"> Retiro en local</label>
+        <label><input type="radio" name="mode" value="delivery"> Delivery</label>
+      </div>
+      <label id="mZonaBox" hidden>Zona de delivery<select name="zona"></select></label>
+      <label>Productos<input id="mBuscar" type="search" placeholder="Buscar producto…" autocomplete="off"></label>
+      <div id="mProds"></div>
+      <label>Notas (opcional)<textarea name="notes" rows="2" placeholder="Sin cebolla, extra salsa…"></textarea></label>
+    </div>
+    <div class="mm-foot">
+      <div id="mResumen"></div>
+      <label class="chk"><input type="checkbox" name="pagado" checked> Pago recibido (queda confirmado)</label>
+      <div class="mm-btns">
+        <button type="submit" class="btn ghost" data-print="0">Guardar</button>
+        <button type="submit" class="btn" data-print="1">Guardar e imprimir</button>
+      </div>
+    </div>
+  </form>
 </div>
 <div id="toast"></div>
 <script>
