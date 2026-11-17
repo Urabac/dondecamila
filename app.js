@@ -494,7 +494,7 @@ if (telInput) {
   telInput.type = "tel";
   telInput.inputMode = "numeric";
   telInput.autocomplete = "tel-national";
-  telInput.maxLength = 11;
+  telInput.removeAttribute("maxlength");   // el límite de 11 se aplica al limpiar (así un número pegado con guiones no se corta)
   telInput.required = true;
   if (!telInput.placeholder || /tel/i.test(telInput.placeholder)) telInput.placeholder = "Tu teléfono (ej: 04121234567)";
   telInput.addEventListener("input", () => {
